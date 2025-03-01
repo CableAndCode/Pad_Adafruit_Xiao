@@ -1,132 +1,120 @@
 #include <Arduino.h>
-
 #include <Adafruit_seesaw.h>
+#include <esp_now.h>
+#include <WiFi.h>
+#include "parameters.h"
 
-Adafruit_seesaw ss;
-Adafruit_seesaw ss2;
+// Adres MAC odbiornika ESP32 Serial Monitor (Debug)
+uint8_t receiverMAC[] = {0xA0, 0xB7, 0x65, 0x4B, 0xC5, 0x30}; 
 
-#define BUTTON_X         6
-#define BUTTON_Y         2
-#define BUTTON_A         5
-#define BUTTON_B         1
-#define BUTTON_SELECT    0
-#define BUTTON_START    16
-uint32_t button_mask = (1UL << BUTTON_X) | (1UL << BUTTON_Y) | (1UL << BUTTON_START) |
-                       (1UL << BUTTON_A) | (1UL << BUTTON_B) | (1UL << BUTTON_SELECT);
+// Gamepad Adresy I2C
+#define GAMEPAD1_ADDR 0x50
+#define GAMEPAD2_ADDR 0x51
 
-uint32_t button_mask2 = (1UL << BUTTON_X) | (1UL << BUTTON_Y) | (1UL << BUTTON_START) |
-                       (1UL << BUTTON_A) | (1UL << BUTTON_B) | (1UL << BUTTON_SELECT);
+// Definicje bitów dla 6 przycisków na joystick
+#define BUTTON_1 0
+#define BUTTON_2 1
+#define BUTTON_3 2
+#define BUTTON_4 3
+#define BUTTON_5 4
+#define BUTTON_6 5
 
-//#define IRQ_PIN   5
-
-
-void setup() {
-  Serial.begin(115200);
-
-  while(!Serial) {
-    delay(10);
-  }
-
-  Serial.println("Gamepad QT example!");
-  
-  if(!ss.begin(0x50)){
-    Serial.println("ERROR! seesaw not found");
-    while(1) delay(1);
-  }
+Adafruit_seesaw ss1, ss2;
 
 
-  if(!ss2.begin(0x51)){
-    Serial.println("ERROR! seesaw not found");
-    while(1) delay(1);
-  }
-  Serial.println("seesaw started");
-  uint32_t version = ((ss.getVersion() >> 16) & 0xFFFF);
-  if (version != 5743) {
-    Serial.print("Wrong firmware loaded? ");
-    Serial.println(version);
-    while(1) delay(10);
-  }
-  Serial.println("Found Product 5743");
-  
-  ss.pinModeBulk(button_mask, INPUT_PULLUP);
-  ss.setGPIOInterrupts(button_mask, 1);
-  ss2.pinModeBulk(button_mask2, INPUT_PULLUP);
-  ss2.setGPIOInterrupts(button_mask2, 1);
-#if defined(IRQ_PIN)
-  pinMode(IRQ_PIN, INPUT);
-#endif
+Message_from_Pad message;
+uint16_t sequenceNumber = 0;
+
+// ESP-NOW konfiguracja
+esp_now_peer_info_t peerInfo;
+
+// Callback na potwierdzenie wysyłki
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+    Serial.print("ESP-NOW Send Status: ");
+    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Success" : "Fail");
 }
 
+// Taski FreeRTOS
+void TaskGamepads(void *pvParameters);
+void TaskESPNow(void *pvParameters);
 
-int last_Lx = 0, last_Ly = 0;
-int last_Rx = 0, last_Ry = 0;
+void setup() {
+    Serial.begin(115200);
+    Wire.begin(5, 6);  // SDA, SCL
 
-void loop() {
-  delay(10); // delay in loop to slow serial output
-  
-  // Reverse x/y values to match joystick orientation
-  int Lx = 1023 - ss.analogRead(14);
-  int Ly = 1023 - ss.analogRead(15);
-  int Rx = 1023 - ss2.analogRead(14);
-  int Ry = 1023 - ss2.analogRead(15);
-  
-  if ( (abs(Lx - last_Lx) > 3)  ||  (abs(Ly - last_Ly) > 3)) {
-    Serial.print("Lx: "); Serial.print(Lx); Serial.print(", "); Serial.print("Ly: "); Serial.println(Ly);
-    last_Lx = Lx;
-    last_Ly = Ly;
-  }
-  if ( (abs(Rx - last_Rx) > 3)  ||  (abs(Ry - last_Ry) > 3)) {
-    Serial.print("Rx: "); Serial.print(Rx); Serial.print(", "); Serial.print("Ry: "); Serial.println(Ry);
-    last_Rx = Rx;
-    last_Ry = Ry;
-  }
-
-#if defined(IRQ_PIN)
-  if(!digitalRead(IRQ_PIN)) {
-    return;
-  }
-#endif
-
-    uint32_t buttonsL = ss.digitalReadBulk(button_mask);
-    uint32_t buttonsR = ss2.digitalReadBulk(button_mask2);
-
-    //Serial.println(buttons, BIN);
-
-    if (! (buttonsL & (1UL << BUTTON_A))) {
-      Serial.println("Button L_A pressed");
-    }
-    if (! (buttonsL & (1UL << BUTTON_B))) {
-      Serial.println("Button L_B pressed");
-    }
-    if (! (buttonsL & (1UL << BUTTON_Y))) {
-      Serial.println("Button L_Y pressed");
-    }
-    if (! (buttonsL & (1UL << BUTTON_X))) {
-      Serial.println("Button L_X pressed");
-    }
-    if (! (buttonsL & (1UL << BUTTON_SELECT))) {
-      Serial.println("Button L_SELECT pressed");
-    }
-    if (! (buttonsL & (1UL << BUTTON_START))) {
-      Serial.println("Button L_START pressed");
+    if (!ss1.begin(GAMEPAD1_ADDR) || !ss2.begin(GAMEPAD2_ADDR)) {
+        Serial.println("❌ Gamepad not found!");
+        while (1) delay(100);
     }
 
-    if (! (buttonsR & (1UL << BUTTON_A))) {
-      Serial.println("Button R_A pressed");
+    Serial.println("✅ Gamepad OK!");
+
+    // Inicjalizacja ESP-NOW
+    WiFi.mode(WIFI_STA);
+    if (esp_now_init() != ESP_OK) {
+        Serial.println("❌ ESP-NOW Init Failed");
+        return;
     }
-    if (! (buttonsR & (1UL << BUTTON_B))) {
-      Serial.println("Button R_B pressed");
+    esp_now_register_send_cb(OnDataSent);
+
+    memcpy(peerInfo.peer_addr, receiverMAC, 6);
+    peerInfo.channel = 0;
+    peerInfo.encrypt = false;
+    
+    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+        Serial.println("❌ Failed to add peer");
+        return;
     }
-    if (! (buttonsR & (1UL << BUTTON_Y))) {
-      Serial.println("Button R_Y pressed");
+
+    // Tworzymy taski
+    xTaskCreate(TaskGamepads, "Gamepads", 4096, NULL, 1, NULL);
+    xTaskCreate(TaskESPNow, "ESPNowSend", 4096, NULL, 1, NULL);
+}
+
+void loop() {}
+
+// 🔥 TASK: Pobieranie danych z gamepadów
+void TaskGamepads(void *pvParameters) {
+    while (1) {
+        message.seqNum = sequenceNumber++;
+
+        // Odczyt joysticków
+        message.L_Joystick_raw_x = ss1.analogRead(14);
+        message.L_Joystick_raw_y = ss1.analogRead(15);
+        message.R_Joystick_raw_x = ss2.analogRead(14);
+        message.R_Joystick_raw_y = ss2.analogRead(15);
+
+        // Normalizacja (-512 do 512)
+        message.L_Joystick_x_message = message.L_Joystick_raw_x - 512;
+        message.L_Joystick_y_message = message.L_Joystick_raw_y - 512;
+        message.R_Joystick_x_message = message.R_Joystick_raw_x - 512;
+        message.R_Joystick_y_message = message.R_Joystick_raw_y - 512;
+
+        // Odczyt przycisków
+        uint32_t buttonsL_raw = ss1.digitalReadBulk(0xFFFF);
+        uint32_t buttonsR_raw = ss2.digitalReadBulk(0xFFFF);
+
+
+        Serial.printf("Raw Buttons (L): %08X  (R): %08X\n", buttonsL_raw, buttonsR_raw);
+
+        message.L_Joystick_buttons_message = ~ss1.digitalReadBulk(0xFFFF) & 0b111111;
+        message.R_Joystick_buttons_message = ~ss2.digitalReadBulk(0xFFFF) & 0b111111;
+
+        vTaskDelay(pdMS_TO_TICKS(10));  // Odczyt co 10ms
     }
-    if (! (buttonsR & (1UL << BUTTON_X))) {
-      Serial.println("Button R_X pressed");
-    }
-    if (! (buttonsR & (1UL << BUTTON_SELECT))) {
-      Serial.println("Button R_SELECT pressed");
-    }
-    if (! (buttonsR & (1UL << BUTTON_START))) {
-      Serial.println("Button R_START pressed");
+}
+
+// 🔥 TASK: Wysyłanie ESP-NOW
+void TaskESPNow(void *pvParameters) {
+    while (1) {
+        esp_err_t result = esp_now_send(receiverMAC, (uint8_t *)&message, sizeof(Message_from_Pad));
+
+        if (result == ESP_OK) {
+            //Serial.println("📡 ESP-NOW Data Sent");
+        } else {
+            Serial.println("❌ ESP-NOW Send Failed");
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(50));  // Wysyłanie co 50ms
     }
 }
