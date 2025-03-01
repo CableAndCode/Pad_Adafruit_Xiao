@@ -6,8 +6,8 @@ typedef struct Message_from_Pad {
     int16_t L_Joystick_y_message = 0;
     int16_t R_Joystick_x_message = 0;
     int16_t R_Joystick_y_message = 0;
-    uint8_t L_Joystick_buttons_message = 0;
-    uint8_t R_Joystick_buttons_message = 0;
+    uint32_t L_Joystick_buttons_message = 0;
+    uint32_t R_Joystick_buttons_message = 0;
     int16_t L_Joystick_raw_x = 0;
     int16_t L_Joystick_raw_y = 0;
     int16_t R_Joystick_raw_x = 0;
