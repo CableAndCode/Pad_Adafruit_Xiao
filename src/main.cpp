@@ -10,28 +10,25 @@
 // Adres MAC odbiornika ESP32 Serial Monitor (Debug)
 uint8_t receiverMAC[] = {0xA0, 0xB7, 0x65, 0x4B, 0xC5, 0x30}; 
 
-// Gamepad Adresy I2C
-#define GAMEPAD1_ADDR 0x50
-#define GAMEPAD2_ADDR 0x51
-
+// Gamepad – adresy I2C
+constexpr uint8_t GAMEPAD1_ADDR = 0x50;
+constexpr uint8_t GAMEPAD2_ADDR = 0x51;
 
 // Mapowanie przycisków
-#define BUTTON_X         6
-#define BUTTON_Y         2
-#define BUTTON_A         5
-#define BUTTON_B         1
-#define BUTTON_SELECT    0
-#define BUTTON_START    16
-uint32_t button_mask = (1UL << BUTTON_X) | (1UL << BUTTON_Y) | (1UL << BUTTON_START) |
-                       (1UL << BUTTON_A) | (1UL << BUTTON_B) | (1UL << BUTTON_SELECT);
-
-uint32_t button_mask2 = (1UL << BUTTON_X) | (1UL << BUTTON_Y) | (1UL << BUTTON_START) |
-                       (1UL << BUTTON_A) | (1UL << BUTTON_B) | (1UL << BUTTON_SELECT);
+constexpr uint8_t BUTTON_X      = 6;
+constexpr uint8_t BUTTON_Y      = 2;
+constexpr uint8_t BUTTON_A      = 5;
+constexpr uint8_t BUTTON_B      = 1;
+constexpr uint8_t BUTTON_SELECT = 0;
+constexpr uint8_t BUTTON_START  = 16;
+const uint32_t button_mask = (1UL << BUTTON_X) | (1UL << BUTTON_Y) | (1UL << BUTTON_START) |
+                             (1UL << BUTTON_A) | (1UL << BUTTON_B) | (1UL << BUTTON_SELECT);
+const uint32_t button_mask2 = button_mask;
 
 // Definicje pinów wyświetlacza
-#define TFT_CS     2
-#define TFT_RST    3
-#define TFT_DC     4
+constexpr uint8_t TFT_CS  = 2;
+constexpr uint8_t TFT_RST = 3;
+constexpr uint8_t TFT_DC  = 4;
 
 // Obiekt wyświetlacza (dostosuj do swojego modelu)
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
@@ -42,22 +39,22 @@ volatile uint32_t failedMessages = 0;
 volatile uint32_t failedPerSecond = 0;
 volatile uint32_t lastFailedCount = 0;
 
-// Muteks dla synchronizacji dostępu do zmiennych
-SemaphoreHandle_t xMutex;
+// Muteks do synchronizacji statystyk (nie do samej struktury wiadomości)
+SemaphoreHandle_t xMutex = NULL;
 
 // Obiekty do obsługi gamepadów
 Adafruit_seesaw ss1, ss2;
 
-// Struktura wiadomości
-Message_from_Pad message;
+// Zamiast globalnej struktury message, użyjemy kolejki do przesyłania kopii
+QueueHandle_t messageQueue = NULL;
 
 // Numer sekwencyjny wiadomości
 uint16_t sequenceNumber = 0;
 
-// ESP-NOW konfiguracja
+// Konfiguracja ESP-NOW
 esp_now_peer_info_t peerInfo;
 
-// Callback po wysłaniu danych
+// Callback po wysłaniu danych ESP-NOW
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
     xSemaphoreTake(xMutex, portMAX_DELAY);
     totalMessages++;
@@ -67,31 +64,29 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
     xSemaphoreGive(xMutex);
 }
 
-
-// Taski FreeRTOS
+// Deklaracje tasków FreeRTOS
 void TaskGamepads(void *pvParameters);
 void TaskESPNow(void *pvParameters);
-void vTaskESPNowStats(void *pvParameters);
+void TaskESPNowStats(void *pvParameters);
 
 void setup() {
     Serial.begin(115200);
     Wire.begin(5, 6);  // SDA, SCL
-    
 
+    // Inicjalizacja gamepadów
     if (!ss1.begin(GAMEPAD1_ADDR) || !ss2.begin(GAMEPAD2_ADDR)) {
         Serial.println("❌ Gamepad not found!");
-        while (1) delay(100);
+        while (1) { delay(100); }
     }
-
     Serial.println("✅ Gamepad OK!");
 
     ss1.pinModeBulk(button_mask, INPUT_PULLUP);
     ss1.setGPIOInterrupts(button_mask, 1);
     ss2.pinModeBulk(button_mask2, INPUT_PULLUP);
     ss2.setGPIOInterrupts(button_mask2, 1);
-        #if defined(IRQ_PIN)
-            pinMode(IRQ_PIN, INPUT);
-        #endif
+    #if defined(IRQ_PIN)
+        pinMode(IRQ_PIN, INPUT);
+    #endif
 
     // Inicjalizacja ESP-NOW
     WiFi.mode(WIFI_STA);
@@ -101,11 +96,9 @@ void setup() {
         return;
     }
     esp_now_register_send_cb(OnDataSent);
-
     memcpy(peerInfo.peer_addr, receiverMAC, 6);
     peerInfo.channel = 0;
     peerInfo.encrypt = false;
-    
     if (esp_now_add_peer(&peerInfo) != ESP_OK) {
         Serial.println("❌ Failed to add peer");
         return;
@@ -117,100 +110,112 @@ void setup() {
 
     // Inicjalizacja muteksu
     xMutex = xSemaphoreCreateMutex();
+    if (xMutex == NULL) {
+        Serial.println("❌ Failed to create mutex");
+        while (1) { delay(100); }
+    }
 
+    // Tworzenie kolejki – długość 1, zawsze najnowsza wartość
+    messageQueue = xQueueCreate(1, sizeof(Message_from_Pad));
+    if (messageQueue == NULL) {
+        Serial.println("❌ Failed to create message queue");
+        while (1) { delay(100); }
+    }
 
-    // Tworzymy taski
+    // Tworzenie tasków
     xTaskCreate(TaskGamepads, "Gamepads", 4096, NULL, 1, NULL);
     xTaskCreate(TaskESPNow, "ESPNowSend", 4096, NULL, 1, NULL);
-    xTaskCreate(vTaskESPNowStats, "ESPNowStats", 4096, NULL, 1, NULL);
+    xTaskCreate(TaskESPNowStats, "ESPNowStats", 4096, NULL, 1, NULL);
 }
 
-void loop() {}
+void loop() {
+    // Pętla główna pozostaje pusta – taski działają w tle.
+}
 
-// 🔥 TASK: Pobieranie danych z gamepadów
+// 🔥 TASK: Odczyt danych z gamepadów i przesyłanie ich do kolejki
 void TaskGamepads(void *pvParameters) {
-    while (1) {
-        message.seqNum = sequenceNumber++;
+    (void)pvParameters;
+    const TickType_t xFrequency = pdMS_TO_TICKS(10);
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    Message_from_Pad msg;  // lokalna kopia wiadomości
 
+    for (;;) {
+        msg.seqNum = sequenceNumber++;
 
-        // Odczyt joysticków
-        message.L_Joystick_raw_x = ss1.analogRead(14);
-        message.L_Joystick_raw_y = ss1.analogRead(15);
-        message.R_Joystick_raw_x = ss2.analogRead(14);
-        message.R_Joystick_raw_y = ss2.analogRead(15);
+        // Odczyt surowych wartości joysticków
+        msg.L_Joystick_raw_x = ss1.analogRead(14);
+        msg.L_Joystick_raw_y = ss1.analogRead(15);
+        msg.R_Joystick_raw_x = ss2.analogRead(14);
+        msg.R_Joystick_raw_y = ss2.analogRead(15);
 
-        // Normalizacja (-512 do 512)
-        message.L_Joystick_x_message = - message.L_Joystick_raw_x + 512;
-        message.L_Joystick_y_message = - message.L_Joystick_raw_y + 512;
-        message.R_Joystick_x_message = message.R_Joystick_raw_x - 512;
-        message.R_Joystick_y_message = message.R_Joystick_raw_y - 512;
+        // Normalizacja wartości (-512 do 512)
+        msg.L_Joystick_x_message = -msg.L_Joystick_raw_x + 512;
+        msg.L_Joystick_y_message = -msg.L_Joystick_raw_y + 512;
+        msg.R_Joystick_x_message = msg.R_Joystick_raw_x - 512;
+        msg.R_Joystick_y_message = msg.R_Joystick_raw_y - 512;
 
-        // Odczyt przycisków
+        // Odczyt przycisków – jeśli zdefiniowano IRQ_PIN, pomijamy tę iterację
         #if defined(IRQ_PIN)
-            if(!digitalRead(IRQ_PIN)) {
-             return;
-                }
+            if (!digitalRead(IRQ_PIN)) {
+                vTaskDelay(pdMS_TO_TICKS(1));
+                continue;
+            }
         #endif
+        msg.L_Joystick_buttons_message = ss1.digitalReadBulk(button_mask);
+        msg.R_Joystick_buttons_message = ss2.digitalReadBulk(button_mask2);
 
-    message.L_Joystick_buttons_message = ss1.digitalReadBulk(button_mask);
-    message.R_Joystick_buttons_message = ss2.digitalReadBulk(button_mask2);
+        // Nadpisujemy poprzednią wartość w kolejce – zawsze trzymamy najnowszy stan
+        xQueueOverwrite(messageQueue, &msg);
 
-
-        vTaskDelay(pdMS_TO_TICKS(10));  // Odczyt co 10ms
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
 
-// 🔥 TASK: Wysyłanie ESP-NOW
+// 🔥 TASK: Wysyłanie danych ESP-NOW z kolejki
 void TaskESPNow(void *pvParameters) {
-    while (1) {
-        TickType_t xLastWakeTime = xTaskGetTickCount();
-        const TickType_t xFrequency = pdMS_TO_TICKS(50);
-        esp_err_t result = esp_now_send(receiverMAC, (uint8_t *)&message, sizeof(Message_from_Pad));
-/*
-        if (result == ESP_OK) {
-            //Serial.println("📡 ESP-NOW Data Sent");
-        } else {
-            Serial.println("❌ ESP-NOW Send Failed");
+    (void)pvParameters;
+    const TickType_t xFrequency = pdMS_TO_TICKS(50);
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    Message_from_Pad msg;
+
+    for (;;) {
+        // Pobierz najnowszą wiadomość z kolejki (bez usuwania) – jeżeli nic nie ma, opuść ten cykl
+        if (xQueuePeek(messageQueue, &msg, 0) == pdTRUE) {
+            esp_now_send(receiverMAC, (uint8_t *)&msg, sizeof(Message_from_Pad));
         }
-*/
-        //vTaskDelay(pdMS_TO_TICKS(50));  // Wysyłanie co 50ms
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
 
-// 🔥 TASK: Statystyki ESP-NOW
-void vTaskESPNowStats(void *pvParameters) {
+// 🔥 TASK: Wyświetlanie statystyk ESP-NOW
+void TaskESPNowStats(void *pvParameters) {
+    (void)pvParameters;
+    const TickType_t xFrequency = pdMS_TO_TICKS(100);
     TickType_t xLastWakeTime = xTaskGetTickCount();
     TickType_t lastTimestamp = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(100);
 
-    while (1) {
+    for (;;) {
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
 
-           // Sprawdzenie rzeczywistego czasu, który minął
         TickType_t currentTimestamp = xTaskGetTickCount();
         TickType_t elapsedTime = currentTimestamp - lastTimestamp;
-        lastTimestamp = currentTimestamp;  // Aktualizacja znacznika czasu
+        lastTimestamp = currentTimestamp;
+        float secondsElapsed = elapsedTime / (float)configTICK_RATE_HZ;
 
-    float secondsElapsed = elapsedTime / (float)configTICK_RATE_HZ;  // Konwersja ticków na sekundy
+        xSemaphoreTake(xMutex, portMAX_DELAY);
+        failedPerSecond = (failedMessages - lastFailedCount) / secondsElapsed;
+        lastFailedCount = failedMessages;
+        xSemaphoreGive(xMutex);
 
-    xSemaphoreTake(xMutex, portMAX_DELAY);
-    failedPerSecond = (failedMessages - lastFailedCount) / secondsElapsed;
-    lastFailedCount = failedMessages;
-    xSemaphoreGive(xMutex);
-
-
-        // Wyczyść ekran i wyświetl nowe wartości
+        // Aktualizacja wyświetlacza – czyścimy cały ekran; w praktyce można odświeżać tylko zmienione fragmenty
         tft.fillScreen(ST77XX_BLACK);
         tft.setCursor(10, 10);
         tft.setTextColor(ST77XX_WHITE);
         tft.setTextSize(1);
-
         tft.print("Failed/sec: ");
         tft.println((float)failedPerSecond);
-        
         tft.print("Total failed: ");
         tft.println(failedMessages);
-        
         tft.print("Total sent: ");
         tft.println(totalMessages);
     }
