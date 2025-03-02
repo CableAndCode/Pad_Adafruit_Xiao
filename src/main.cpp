@@ -208,14 +208,20 @@ void TaskESPNowStats(void *pvParameters) {
         xSemaphoreGive(xMutex);
 
         // Aktualizacja wyświetlacza – czyścimy cały ekran; w praktyce można odświeżać tylko zmienione fragmenty
-        tft.fillScreen(ST77XX_BLACK);
-        tft.setCursor(10, 10);
-        tft.setTextColor(ST77XX_WHITE);
-        tft.setTextSize(1);
+        tft.fillRect(X_POS, Y_POS_FAILED_SEC, RECT_WIDTH, RECT_HEIGHT, ST77XX_BLACK);
+        tft.setCursor(X_POS, Y_POS_FAILED_SEC);
         tft.print("Failed/sec: ");
         tft.println((float)failedPerSecond);
+
+        // Czyszczenie tylko obszaru "Total failed"
+        tft.fillRect(X_POS, Y_POS_TOTAL_FAILED, RECT_WIDTH, RECT_HEIGHT, ST77XX_BLACK);
+        tft.setCursor(X_POS, Y_POS_TOTAL_FAILED);
         tft.print("Total failed: ");
         tft.println(failedMessages);
+
+        // Czyszczenie tylko obszaru "Total sent"
+        tft.fillRect(X_POS, Y_POS_TOTAL_SENT, RECT_WIDTH, RECT_HEIGHT, ST77XX_BLACK);
+        tft.setCursor(X_POS, Y_POS_TOTAL_SENT);
         tft.print("Total sent: ");
         tft.println(totalMessages);
     }

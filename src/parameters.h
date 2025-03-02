@@ -37,4 +37,16 @@ const uint8_t macPlatformMecanum[] = {0xDC, 0xDA, 0x0C, 0x55, 0xD5, 0xB8}; // Pl
 const uint8_t macModulXiao[]       = {0x34, 0x85, 0x18, 0x9E, 0x87, 0xD4};   // Seeduino Xiao ESP32 S3
 const uint8_t macMonitorDebug[]    = {0xA0, 0xB7, 0x65, 0x4B, 0xC5, 0x30};   // ESP32 NodeMCU Dev Kit C V2 mit CP2102
 
+//// Przykładowe współrzędne i rozmiary obszarów ekranu TFT
+constexpr int X_POS = 10;
+constexpr int Y_POS_FAILED_SEC = 10;
+constexpr int Y_POS_TOTAL_FAILED = 30;
+constexpr int Y_POS_TOTAL_SENT = 50;
+constexpr int RECT_WIDTH = 120;
+constexpr int RECT_HEIGHT = 15;
+
+
+
 #endif // PARAMETERS_H
+
+
