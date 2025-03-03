@@ -75,35 +75,60 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
     }
 }
 
-// ----- TASK 1: Odczyt danych z gamepadów (TaskGamepads) -----
-// Odczytuje dane z obu gamepadów, uzupełnia pole timestamp i zapisuje do globalnej struktury.
+// ----- TASK 1: Odczyt danych gamepadów (TaskGamepads) -----
 void TaskGamepads(void *pvParameters) {
     (void)pvParameters;
     const TickType_t xFrequency = pdMS_TO_TICKS(10);  // Odczyt co 10 ms
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    
+
     while (1) {
-        // Zabezpieczamy aktualizację danych mutexem
-        xSemaphoreTake(messageMutex, portMAX_DELAY);
-        message.timestamp = millis();  // Heartbeat
+        // Odczyt danych i normalizacja poza sekcją krytyczną
+        unsigned long localTimestamp = millis();
         
         // Odczyt surowych wartości joysticków
-        message.L_Joystick_raw_x = ss1.analogRead(14);
-        message.L_Joystick_raw_y = ss1.analogRead(15);
-        message.R_Joystick_raw_x = ss2.analogRead(14);
-        message.R_Joystick_raw_y = ss2.analogRead(15);
+        int localL_Joystick_raw_x = ss1.analogRead(14);
+        int localL_Joystick_raw_y = ss1.analogRead(15);
+        int localR_Joystick_raw_x = ss2.analogRead(14);
+        int localR_Joystick_raw_y = ss2.analogRead(15);
 
         // Normalizacja wartości – przykładowa transformacja
-        message.L_Joystick_x_message = -message.L_Joystick_raw_x + 512;
-        message.L_Joystick_y_message = -message.L_Joystick_raw_y + 512;
-        message.R_Joystick_x_message = message.R_Joystick_raw_x - 512;
-        message.R_Joystick_y_message = message.R_Joystick_raw_y - 512;
+    
+        int localL_Joystick_x_message = -localL_Joystick_raw_x + 512;
+        int localL_Joystick_y_message = -localL_Joystick_raw_y + 512;
+        int localR_Joystick_x_message = localR_Joystick_raw_x - 512;
+        int localR_Joystick_y_message = localR_Joystick_raw_y - 512;
 
         // Odczyt stanów przycisków
-        message.L_Joystick_buttons_message = ss1.digitalReadBulk(button_mask);
-        message.R_Joystick_buttons_message = ss2.digitalReadBulk(button_mask2);
+        int localL_Joystick_buttons_message = ss1.digitalReadBulk(button_mask);
+        int localR_Joystick_buttons_message = ss2.digitalReadBulk(button_mask2);
+
+        // Krótka sekcja krytyczna – kopiowanie lokalnych danych do globalnej struktury
+        xSemaphoreTake(messageMutex, portMAX_DELAY);
+        message.timestamp = localTimestamp;
+        
+        message.L_Joystick_raw_x = localL_Joystick_raw_x;
+        message.L_Joystick_raw_y = localL_Joystick_raw_y;
+        message.R_Joystick_raw_x = localR_Joystick_raw_x;
+        message.R_Joystick_raw_y = localR_Joystick_raw_y;
+
+
+        
+        message.L_Joystick_x_message = localL_Joystick_x_message;
+        message.L_Joystick_y_message = localL_Joystick_y_message;
+        message.R_Joystick_x_message = localR_Joystick_x_message;
+        message.R_Joystick_y_message = localR_Joystick_y_message;
+        
+        message.L_Joystick_buttons_message = localL_Joystick_buttons_message;
+        message.R_Joystick_buttons_message = localR_Joystick_buttons_message;
         xSemaphoreGive(messageMutex);
 
+        // Przykładowe monitorowanie zużycia stosu – wywołanie funkcji
+        UBaseType_t freeStack = uxTaskGetStackHighWaterMark(NULL);
+        Serial.print("Wolna pamięć stosu: ");
+        Serial.println(freeStack);
+
+
+        // Odczekanie do następnego cyklu
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
@@ -117,6 +142,7 @@ void TaskESPNow(void *pvParameters) {
     Message_from_Pad localMsg;
     
     while (1) {
+
         xSemaphoreTake(messageMutex, portMAX_DELAY);
         memcpy(&localMsg, &message, sizeof(Message_from_Pad));
         xSemaphoreGive(messageMutex);
@@ -129,6 +155,7 @@ void TaskESPNow(void *pvParameters) {
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
+
 
 // ----- TASK 3: Wyświetlanie statystyk ESP-NOW (vTaskESPNowStats) -----
 // Wyświetla statystyki transmisji na TFT.
@@ -216,6 +243,7 @@ void vTaskESPNowStats(void *pvParameters) {
 }
 
 void setup() {
+    setCpuFrequencyMhz(80); // Zmiana częstotliwości CPU na 80 MHz
     Serial.begin(115200);
     Wire.begin(5, 6);  // Konfiguracja I2C – SDA, SCL (dostosuj do swojego sprzętu)
 
