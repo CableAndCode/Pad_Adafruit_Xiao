@@ -55,16 +55,20 @@ Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 // ----- Globalne zmienne i obiekty -----
 
 //zmienne do przechowywania wartości dryftu joysticków
-int offsetL_X = 0;
-int offsetL_Y = 0;
-int offsetR_X = 0;
-int offsetR_Y = 0;
+
 
 // Obiekty do obsługi gamepadów
 Adafruit_seesaw ss1, ss2;
 
-JoystickReader joystickReaderL(offsetL_X, offsetL_Y);
-JoystickReader joystickReaderR(offsetL_X, offsetR_Y);
+volatile int offsetL_X = 0;
+volatile int offsetL_Y = 0;
+volatile int offsetR_X = 0;
+volatile int offsetR_Y = 0;
+ 
+
+JoystickReader joystickReaderL(offsetL_X, offsetL_Y, true, true);
+JoystickReader joystickReaderR(offsetR_X, offsetR_Y, false, false);
+
 
 // Globalna struktura wiadomości z pada (heartbeat w polu timestamp)
 Message_from_Pad message;
@@ -78,6 +82,7 @@ volatile uint32_t failedMessages = 0;
 volatile uint32_t lastFailedCount = 0;
 volatile uint32_t failedPerSecond = 0;
 
+  
 
 
 // Konfiguracja ESP-NOW
@@ -109,6 +114,7 @@ void TaskGamepads(void *pvParameters) {
 
         // Normalizacja wartości – przykładowa transformacja
     
+        /*
         int localL_Joystick_x = -localL_Joystick_raw_x + 512;
         int localL_Joystick_y = -localL_Joystick_raw_y + 512;
         int localR_Joystick_x = localR_Joystick_raw_x - 512;
@@ -118,7 +124,11 @@ void TaskGamepads(void *pvParameters) {
         int localL_Joystick_y_message = localL_Joystick_y - (512 - offsetL_Y);
         int localR_Joystick_x_message = localR_Joystick_x - (-512 + offsetR_X);
         int localR_Joystick_y_message = localR_Joystick_y - (-512 + offsetR_Y);
-
+        */
+        int localL_Joystick_x = joystickReaderL.getCorrectedValueX(localL_Joystick_raw_x);
+        int localL_Joystick_y = joystickReaderL.getCorrectedValueY(localL_Joystick_raw_y);
+        int localR_Joystick_x = joystickReaderR.getCorrectedValueX(localR_Joystick_raw_x);
+        int localR_Joystick_y = joystickReaderR.getCorrectedValueY(localR_Joystick_raw_y);
 
         // Odczyt stanów przycisków
         int localL_Joystick_buttons_message = ss1.digitalReadBulk(button_mask);
@@ -132,13 +142,11 @@ void TaskGamepads(void *pvParameters) {
         message.L_Joystick_raw_y = localL_Joystick_raw_y;
         message.R_Joystick_raw_x = localR_Joystick_raw_x;
         message.R_Joystick_raw_y = localR_Joystick_raw_y;
-
-
         
-        message.L_Joystick_x_message = localL_Joystick_x_message;
-        message.L_Joystick_y_message = localL_Joystick_y_message;
-        message.R_Joystick_x_message = localR_Joystick_x_message;
-        message.R_Joystick_y_message = localR_Joystick_y_message;
+        message.L_Joystick_x_message = localL_Joystick_x;
+        message.L_Joystick_y_message = localL_Joystick_y;
+        message.R_Joystick_x_message = localR_Joystick_x;
+        message.R_Joystick_y_message = localR_Joystick_y;
         
         message.L_Joystick_buttons_message = localL_Joystick_buttons_message;
         message.R_Joystick_buttons_message = localR_Joystick_buttons_message;
@@ -148,6 +156,8 @@ void TaskGamepads(void *pvParameters) {
         UBaseType_t freeStack = uxTaskGetStackHighWaterMark(NULL);
         Serial.print("Wolna pamięć stosu: ");
         Serial.println(freeStack);
+
+        
 
 
         // Odczekanie do następnego cyklu
@@ -324,6 +334,9 @@ void setup() {
     offsetL_Y = ss1.analogRead(15);
     offsetR_X = ss2.analogRead(14);
     offsetR_Y = ss2.analogRead(15);
+    joystickReaderL.setOffset(offsetL_X, offsetL_Y);
+    joystickReaderR.setOffset(offsetR_X, offsetR_Y);
+    
 
 
     // Inicjalizacja TFT
