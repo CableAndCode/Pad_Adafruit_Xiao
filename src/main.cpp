@@ -7,6 +7,7 @@
 #include <Adafruit_ST7735.h>
 #include <SPI.h>
 #include <joystick_read.h>
+#include <DisplayManager.h>
 
 // ----- Konfiguracja sprzętowa -----
 
@@ -206,105 +207,9 @@ void vTaskESPNowStats(void *pvParameters) {
         float secondsElapsed = elapsedTime / (float)configTICK_RATE_HZ;
         failedPerSecond = (failedMessages - lastFailedCount) / secondsElapsed;
         lastFailedCount = failedMessages;
+        
 
-        // Aktualizacja tylko obszaru dla Failed/sec
-        tft.fillRect(STAT_X_POS, STAT_Y_FAILED_SEC, STAT_RECT_WIDTH, STAT_RECT_HEIGHT, ST77XX_BLACK);
-        tft.setCursor(STAT_X_POS, STAT_Y_FAILED_SEC);
-        tft.setTextColor(ST77XX_WHITE);
-        tft.setTextSize(1);
-        tft.print("Failed/sec: ");
-        tft.println(failedPerSecond);
-
-        // Aktualizacja obszaru dla Total failed
-        tft.fillRect(STAT_X_POS, STAT_Y_TOTAL_FAILED, STAT_RECT_WIDTH, STAT_RECT_HEIGHT, ST77XX_BLACK);
-        tft.setCursor(STAT_X_POS, STAT_Y_TOTAL_FAILED);
-        tft.print("Total failed: ");
-        tft.println(failedMessages);
-
-        // Aktualizacja obszaru dla Total sent
-        tft.fillRect(STAT_X_POS, STAT_Y_TOTAL_SENT, STAT_RECT_WIDTH, STAT_RECT_HEIGHT, ST77XX_BLACK);
-        tft.setCursor(STAT_X_POS, STAT_Y_TOTAL_SENT);
-        tft.print("Total sent: ");
-        tft.println(totalMessages);
-
-        // Aktualizacja obszaru dla joysticków L i R
-        tft.fillRect(STAT_X_POS, L_X_JOY_POS, STAT_RECT_WIDTH, STAT_RECT_HEIGHT, ST77XX_BLACK);
-        tft.setCursor(STAT_X_POS, L_X_JOY_POS);
-        tft.print("L_X: ");
-        tft.println(message.L_Joystick_x_message);
-        tft.fillRect(STAT_X_POS, L_Y_JOY_POS, STAT_RECT_WIDTH, STAT_RECT_HEIGHT, ST77XX_BLACK);
-        tft.setCursor(STAT_X_POS, L_Y_JOY_POS);
-        tft.print("L_Y: ");
-        tft.println(message.L_Joystick_y_message);
-        tft.fillRect(STAT_X_POS, R_X_JOY_POS, STAT_RECT_WIDTH, STAT_RECT_HEIGHT, ST77XX_BLACK);
-        tft.setCursor(STAT_X_POS, R_X_JOY_POS);
-        tft.print("R_X: ");
-        tft.println(message.R_Joystick_x_message);
-        tft.fillRect(STAT_X_POS, R_Y_JOY_POS, STAT_RECT_WIDTH, STAT_RECT_HEIGHT, ST77XX_BLACK);
-        tft.setCursor(STAT_X_POS, R_Y_JOY_POS);
-        tft.print("R_Y: ");
-        tft.println(message.R_Joystick_y_message);  
-
-        // Aktualizacja obszaru dla Button pressed
-        tft.fillRect(STAT_X_POS, L_Button_pressed, STAT_RECT_WIDTH, STAT_RECT_HEIGHT, ST77XX_BLACK);
-        tft.setCursor(STAT_X_POS, L_Button_pressed);
-        tft.print("L: ");
-                if (! (message.L_Joystick_buttons_message & (1UL << BUTTON_A))) {
-                    tft.println("Button A pressed");
-                }        
-                if (! (message.L_Joystick_buttons_message & (1UL << BUTTON_B))) {
-                    tft.println("Button B pressed");
-                }        
-                if (! (message.L_Joystick_buttons_message & (1UL << BUTTON_X))) {
-                    tft.println("Button X pressed");
-                }        
-                if (! (message.L_Joystick_buttons_message & (1UL << BUTTON_Y))) {
-                    tft.println("Button Y pressed");
-                }        
-                if (! (message.L_Joystick_buttons_message & (1UL << BUTTON_SELECT))) {
-                    tft.println("Button SELECT pressed");
-                }        
-                if (! (message.L_Joystick_buttons_message & (1UL << BUTTON_START))) {
-                    tft.println("Button START pressed");
-                }
-        tft.fillRect(STAT_X_POS, R_Button_pressed, STAT_RECT_WIDTH, STAT_RECT_HEIGHT, ST77XX_BLACK);
-        tft.setCursor(STAT_X_POS, R_Button_pressed);
-        tft.print("R: ");
-                if (! (message.R_Joystick_buttons_message & (1UL << BUTTON_A))) {
-                    tft.println("Button A pressed");
-                }
-                if (! (message.R_Joystick_buttons_message & (1UL << BUTTON_B))) {
-                    tft.println("Button B pressed");
-                }
-                if (! (message.R_Joystick_buttons_message & (1UL << BUTTON_X))) {
-                    tft.println("Button X pressed");
-                }        
-                if (! (message.R_Joystick_buttons_message & (1UL << BUTTON_Y))) {
-                    tft.println("Button Y pressed");
-                }        
-                if (! (message.R_Joystick_buttons_message & (1UL << BUTTON_SELECT))) {
-                    tft.println("Button SELECT pressed");
-                }        
-                if (! (message.R_Joystick_buttons_message & (1UL << BUTTON_START))) {
-                    tft.println("Button START pressed");
-                }
-        tft.fillRect(STAT_X_POS, driftL_X_POS, STAT_RECT_WIDTH, STAT_RECT_HEIGHT, ST77XX_BLACK);
-        tft.setCursor(STAT_X_POS, driftL_X_POS);
-        tft.print("L_X offset: ");
-        tft.println(offsetL_X);
-        tft.fillRect(STAT_X_POS, driftL_Y_POS, STAT_RECT_WIDTH, STAT_RECT_HEIGHT, ST77XX_BLACK);
-        tft.setCursor(STAT_X_POS, driftL_Y_POS);
-        tft.print("L_Y offset: ");
-        tft.println(offsetL_Y);
-        tft.fillRect(STAT_X_POS, driftR_X_POS, STAT_RECT_WIDTH, STAT_RECT_HEIGHT, ST77XX_BLACK);
-        tft.setCursor(STAT_X_POS, driftR_X_POS);
-        tft.print("R_X offset: ");
-        tft.println(offsetR_X);
-        tft.fillRect(STAT_X_POS, driftR_Y_POS, STAT_RECT_WIDTH, STAT_RECT_HEIGHT, ST77XX_BLACK);
-        tft.setCursor(STAT_X_POS, driftR_Y_POS);
-        tft.print("R_Y offset: ");
-        tft.println(offsetR_Y);                  
-    }
+       }
 
 }
 
@@ -312,6 +217,8 @@ void setup() {
     //setCpuFrequencyMhz(80); // Zmiana częstotliwości CPU na 80 MHz
     Serial.begin(115200);
     Wire.begin(5, 6);  // Konfiguracja I2C – SDA, SCL (dostosuj do swojego sprzętu)
+
+    DisplayManager display;
 
     // Inicjalizacja gamepadów
     if (!ss1.begin(GAMEPAD1_ADDR) || !ss2.begin(GAMEPAD2_ADDR)) {
