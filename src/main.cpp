@@ -3,13 +3,16 @@
 #include <esp_now.h>
 #include <WiFi.h>
 #include "parameters.h"
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7735.h>
 #include <SPI.h>
 #include <joystick_read.h>
+#include <TFT_eSPI.h>
 #include <DisplayManager.h>
 
+
 // ----- Konfiguracja sprzętowa -----
+
+//TFT Display
+DisplayManager display;
 
 // Adres MAC odbiornika – ustaw właściwy adres, do którego chcesz wysyłać dane
 uint8_t receiverMAC[] = {0xA0, 0xB7, 0x65, 0x4B, 0xC5, 0x30}; 
@@ -29,29 +32,7 @@ const uint32_t button_mask = (1UL << BUTTON_X) | (1UL << BUTTON_Y) | (1UL << BUT
                              (1UL << BUTTON_A) | (1UL << BUTTON_B) | (1UL << BUTTON_SELECT);
 const uint32_t button_mask2 = button_mask;
 
-// Stałe definiujące pozycje i rozmiary obszarów statystyk
-constexpr int STAT_X_POS = 0;
-constexpr int STAT_Y_FAILED_SEC = 0;
-constexpr int STAT_Y_TOTAL_FAILED = 10;
-constexpr int STAT_Y_TOTAL_SENT = 20;
-constexpr int L_Button_pressed = 30;
-constexpr int R_Button_pressed = 40;
-constexpr int L_X_JOY_POS = 50;
-constexpr int L_Y_JOY_POS = 60;
-constexpr int R_X_JOY_POS = 70;
-constexpr int R_Y_JOY_POS = 80;
-constexpr int driftL_X_POS = 90;
-constexpr int driftL_Y_POS = 100;
-constexpr int driftR_X_POS = 110;
-constexpr int driftR_Y_POS = 120;
-constexpr int STAT_RECT_WIDTH = 128;
-constexpr int STAT_RECT_HEIGHT = 20;
 
-// Piny wyświetlacza TFT
-#define TFT_CS     2
-#define TFT_RST    3
-#define TFT_DC     4
-Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
 // ----- Globalne zmienne i obiekty -----
 
@@ -113,19 +94,7 @@ void TaskGamepads(void *pvParameters) {
         int localR_Joystick_raw_x = ss2.analogRead(14);
         int localR_Joystick_raw_y = ss2.analogRead(15);
 
-        // Normalizacja wartości – przykładowa transformacja
-    
-        /*
-        int localL_Joystick_x = -localL_Joystick_raw_x + 512;
-        int localL_Joystick_y = -localL_Joystick_raw_y + 512;
-        int localR_Joystick_x = localR_Joystick_raw_x - 512;
-        int localR_Joystick_y = localR_Joystick_raw_y - 512;
-
-        int localL_Joystick_x_message = localL_Joystick_x - (512 - offsetL_X);
-        int localL_Joystick_y_message = localL_Joystick_y - (512 - offsetL_Y);
-        int localR_Joystick_x_message = localR_Joystick_x - (-512 + offsetR_X);
-        int localR_Joystick_y_message = localR_Joystick_y - (-512 + offsetR_Y);
-        */
+       
         int localL_Joystick_x = joystickReaderL.getCorrectedValueX(localL_Joystick_raw_x);
         int localL_Joystick_y = joystickReaderL.getCorrectedValueY(localL_Joystick_raw_y);
         int localR_Joystick_x = joystickReaderR.getCorrectedValueX(localR_Joystick_raw_x);
@@ -207,18 +176,15 @@ void vTaskESPNowStats(void *pvParameters) {
         float secondsElapsed = elapsedTime / (float)configTICK_RATE_HZ;
         failedPerSecond = (failedMessages - lastFailedCount) / secondsElapsed;
         lastFailedCount = failedMessages;
-        
-
-       }
-
+    }
+       
 }
 
 void setup() {
-    //setCpuFrequencyMhz(80); // Zmiana częstotliwości CPU na 80 MHz
     Serial.begin(115200);
-    Wire.begin(5, 6);  // Konfiguracja I2C – SDA, SCL (dostosuj do swojego sprzętu)
+    Wire.begin(5, 6);  // Konfiguracja I2C – SDA, SCL 
 
-    DisplayManager display;
+    
 
     // Inicjalizacja gamepadów
     if (!ss1.begin(GAMEPAD1_ADDR) || !ss2.begin(GAMEPAD2_ADDR)) {
@@ -245,10 +211,6 @@ void setup() {
     joystickReaderR.setOffset(offsetR_X, offsetR_Y);
     
 
-
-    // Inicjalizacja TFT
-    tft.initR(INITR_BLACKTAB);
-    tft.fillScreen(ST77XX_BLACK);
 
     // Konfiguracja ESP-NOW
     WiFi.mode(WIFI_STA);

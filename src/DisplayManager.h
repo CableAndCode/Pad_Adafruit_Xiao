@@ -6,19 +6,19 @@
 class DisplayManager {
 private:
     TFT_eSPI tft;
-    TFT_eSprite imgSprite128_160;
-    TFT_eSprite imgSprite128_40;
-    TFT_eSprite imgSprite64_64;
-    TFT_eSprite imgSprite128_44;
+    TFT_eSprite spriteJoystick;
+    TFT_eSprite spriteStatus;
+    TFT_eSprite spriteMessages;
 
     int lastLx, lastLy, lastRx, lastRy;
     int lastPacketsSent, lastErrors;
 
 public:
     DisplayManager();
+    void begin();
     void updateJoystick(int lx, int ly, int rx, int ry);
-    void updateTerminalInfo(int packetsSent, int errors);
-    void drawPointer(int lx, int ly, int rx, int ry);
+    void updateStatus(int packetsSent, int errors);
+    void showMessage(const char* message);
 };
 
 #endif
