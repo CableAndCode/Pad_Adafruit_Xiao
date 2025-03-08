@@ -6,7 +6,8 @@
 class DisplayManager {
 private:
     TFT_eSPI tft;
-    TFT_eSprite spriteJoystick;
+    TFT_eSprite spriteJoystick_L;
+    TFT_eSprite spriteJoystick_R;
     TFT_eSprite spriteStatus;
     TFT_eSprite spriteMessages;
 

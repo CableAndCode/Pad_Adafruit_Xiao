@@ -139,7 +139,7 @@ void TaskGamepads(void *pvParameters) {
 // Co 50 ms odczytuje dane (z mutexem) i wysyła je przez ESP-NOW.
 void TaskESPNow(void *pvParameters) {
     (void)pvParameters;
-    const TickType_t xFrequency = pdMS_TO_TICKS(50); // Wysyłka co 50 ms
+    const TickType_t xFrequency = pdMS_TO_TICKS(20); // Wysyłka co 20 ms
     TickType_t xLastWakeTime = xTaskGetTickCount();
     Message_from_Pad localMsg;
     
@@ -160,10 +160,9 @@ void TaskESPNow(void *pvParameters) {
 
 
 // ----- TASK 3: Wyświetlanie statystyk ESP-NOW (vTaskESPNowStats) -----
-// Wyświetla statystyki transmisji na TFT.
 void vTaskESPNowStats(void *pvParameters) {
     (void)pvParameters;
-    const TickType_t xFrequency = pdMS_TO_TICKS(100); // Aktualizacja co 100 ms
+    const TickType_t xFrequency = pdMS_TO_TICKS(40); // Aktualizacja co 40 ms
     TickType_t xLastWakeTime = xTaskGetTickCount();
     TickType_t lastTimestamp = xTaskGetTickCount();
 
@@ -176,13 +175,33 @@ void vTaskESPNowStats(void *pvParameters) {
         float secondsElapsed = elapsedTime / (float)configTICK_RATE_HZ;
         failedPerSecond = (failedMessages - lastFailedCount) / secondsElapsed;
         lastFailedCount = failedMessages;
+
+        // Odczytaj wartości joysticków
+        xSemaphoreTake(messageMutex, portMAX_DELAY);
+        int lx = message.L_Joystick_x_message;
+        int ly = message.L_Joystick_y_message;
+        int rx = message.R_Joystick_x_message;
+        int ry = message.R_Joystick_y_message;
+        xSemaphoreGive(messageMutex);
+
+        // Aktualizacja wyświetlacza
+        display.updateJoystick(lx, ly, rx, ry);
+        display.updateStatus(totalMessages, failedMessages);
+
+        // Wyświetl komunikat
+        if (failedMessages == 0) {
+            display.showMessage("ESP-NOW OK");
+        } else {
+            display.showMessage("ESP-NOW ERROR");
+        }
     }
-       
 }
+
 
 void setup() {
     Serial.begin(115200);
-    Wire.begin(5, 6);  // Konfiguracja I2C – SDA, SCL 
+    Wire.begin(5, 6);  // Konfiguracja I2C – SDA, SCL
+    display.begin();
 
     
 
