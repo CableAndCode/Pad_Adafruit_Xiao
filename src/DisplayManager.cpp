@@ -12,13 +12,14 @@ void DisplayManager::begin() {
     
     spriteJoystick_L.createSprite(64, 64);
     spriteJoystick_R.createSprite(64, 64);
-    spriteStatus.createSprite(128, 50);
-    spriteMessages.createSprite(128, 40);
+    spriteMessages.createSprite(128, 30);
+    spriteStatus.createSprite(128, 40);
+    
     
     spriteJoystick_L.fillScreen(TFT_BLACK);
     spriteJoystick_R.fillScreen(TFT_BLACK);
-    spriteStatus.fillScreen(TFT_BLACK);
     spriteMessages.fillScreen(TFT_BLACK);
+    spriteStatus.fillScreen(TFT_BLACK);
 }
 
 void DisplayManager::updateJoystick(int lx, int ly, int rx, int ry) {
@@ -37,27 +38,33 @@ void DisplayManager::updateJoystick(int lx, int ly, int rx, int ry) {
 
 void DisplayManager::updateStatus(int packetsSent, int errors) {
     if (packetsSent != lastPacketsSent || errors != lastErrors) {
-        spriteStatus.fillScreen(TFT_BLACK);
-        spriteStatus.setCursor(0, 0);
+        // Zmiana koloru tła na podstawie liczby błędów
+        if (errors == 0) {
+            spriteStatus.fillScreen(TFT_BLACK);
+        } else if (errors < 50) {
+            spriteStatus.fillScreen(TFT_CYAN);
+        } else {
+            spriteStatus.fillScreen(TFT_PURPLE);
+        }
+        spriteStatus.setCursor(0, 3);
         spriteStatus.setTextColor(TFT_WHITE);
         spriteStatus.setTextSize(1);
-        spriteStatus.print("Packets: "); spriteStatus.println(packetsSent);
-        spriteStatus.print("Errors: "); spriteStatus.println(errors);
-        spriteStatus.print("L_X: "); spriteStatus.println(lastLx);
-        spriteStatus.print("L_Y: "); spriteStatus.println(lastLy);
-        spriteStatus.print("R_X: "); spriteStatus.println(lastRx);
-        spriteStatus.print("R_Y: "); spriteStatus.println(lastRy);
-        spriteStatus.pushSprite(0, 64);
-        lastPacketsSent = packetsSent;
-        lastErrors = errors;
+
+        spriteStatus.printf("P: %6d  E: %6d\n", packetsSent, errors);
+        spriteStatus.printf("L_X: %4d  L_Y: %4d\n", lastLx, lastLy);
+        spriteStatus.printf("R_X: %4d  R_Y: %4d\n", lastRx, lastRy);
+        spriteStatus.drawFastHLine(0, 30, 128, TFT_WHITE);
+
+        spriteStatus.pushSprite(0, 65);
+
     }
 }
 
 void DisplayManager::showMessage(const char* message) {
+    spriteMessages.setCursor(0, 3);
     spriteMessages.fillScreen(TFT_BLACK);
-    spriteMessages.setCursor(0, 0);
     spriteMessages.setTextColor(TFT_YELLOW);
     spriteMessages.setTextSize(1);
     spriteMessages.println(message);
-    spriteMessages.pushSprite(0, 125);
+    spriteMessages.pushSprite(0, 96);
 }

@@ -6,10 +6,11 @@
 class DisplayManager {
 private:
     TFT_eSPI tft;
-    TFT_eSprite spriteJoystick_L;
-    TFT_eSprite spriteJoystick_R;
-    TFT_eSprite spriteStatus;
-    TFT_eSprite spriteMessages;
+    TFT_eSprite spriteJoystick_L;   // sprite do wyświetlania joysticka lewego jako kółka w kwadracie
+    TFT_eSprite spriteJoystick_R;   // sprite do wyświetlania joysticka prawego jako kółka w kwadracie   
+    TFT_eSprite spriteMessages;     // sprite do wyświetlania komunikatów na temat esp-now
+    TFT_eSprite spriteStatus;       // sprite do wyświetlania statusu, czyli ilości wysłanych pakietów i błędów oraz wartości joysticków
+    
 
     int lastLx, lastLy, lastRx, lastRy;
     int lastPacketsSent, lastErrors;

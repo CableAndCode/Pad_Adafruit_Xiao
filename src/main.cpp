@@ -63,6 +63,8 @@ volatile uint32_t totalMessages = 0;
 volatile uint32_t failedMessages = 0;
 volatile uint32_t lastFailedCount = 0;
 volatile uint32_t failedPerSecond = 0;
+volatile int consecutiveFailures = 0;       // Licznik niepowodzeń esp-now
+volatile int espNowStatus = 0;              // 0 = OK, 1 = WARNING, 2 = ERROR
 
   
 
@@ -73,7 +75,9 @@ esp_now_peer_info_t peerInfo;
 // ----- Callback wysyłania -----
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
     totalMessages++;
-    if (status != ESP_NOW_SEND_SUCCESS) {
+    if (status == ESP_NOW_SEND_SUCCESS) {
+        failedMessages = 0;
+    } else {
         failedMessages++;
     }
 }
@@ -81,12 +85,12 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 // ----- TASK 1: Odczyt danych gamepadów (TaskGamepads) -----
 void TaskGamepads(void *pvParameters) {
     (void)pvParameters;
-    const TickType_t xFrequency = pdMS_TO_TICKS(10);  // Odczyt co 10 ms
+    const TickType_t xFrequency = pdMS_TO_TICKS(25);  // Odczyt 40 razy na sekundę
     TickType_t xLastWakeTime = xTaskGetTickCount();
 
     while (1) {
         // Odczyt danych i normalizacja poza sekcją krytyczną
-        unsigned long localTimestamp = millis();
+        unsigned long localTimestamp = millis();            // Odczyt czasu uzyty do heartbeatu
         
         // Odczyt surowych wartości joysticków
         int localL_Joystick_raw_x = ss1.analogRead(14);
@@ -94,8 +98,8 @@ void TaskGamepads(void *pvParameters) {
         int localR_Joystick_raw_x = ss2.analogRead(14);
         int localR_Joystick_raw_y = ss2.analogRead(15);
 
-       
-        int localL_Joystick_x = joystickReaderL.getCorrectedValueX(localL_Joystick_raw_x);
+        //odczyt wartości joysticków z uwzględnieniem dryftu
+        int localL_Joystick_x = joystickReaderL.getCorrectedValueX(localL_Joystick_raw_x); 
         int localL_Joystick_y = joystickReaderL.getCorrectedValueY(localL_Joystick_raw_y);
         int localR_Joystick_x = joystickReaderR.getCorrectedValueX(localR_Joystick_raw_x);
         int localR_Joystick_y = joystickReaderR.getCorrectedValueY(localR_Joystick_raw_y);
@@ -122,13 +126,26 @@ void TaskGamepads(void *pvParameters) {
         message.R_Joystick_buttons_message = localR_Joystick_buttons_message;
         xSemaphoreGive(messageMutex);
 
-        // Przykładowe monitorowanie zużycia stosu – wywołanie funkcji
-        UBaseType_t freeStack = uxTaskGetStackHighWaterMark(NULL);
+        // Przykładowe monitorowanie zużycia zasobow – można odkomentować
+        /*
+        UBaseType_t freeStack = uxTaskGetStackHighWaterMark(NULL); // Dostępna pamięć stosu dla tasku
         Serial.print("Wolna pamięć stosu: ");
         Serial.println(freeStack);
 
-        
+        Serial.print("Free heap: ");                 // Dostępna pamięć heap (RAM)
+        Serial.println(esp_get_free_heap_size());
 
+        Serial.print("Free PSRAM: ");                // Dostępna pamięć PSRAM (dodatkowa pamięć RAM)
+        Serial.println(ESP.getFreePsram());
+
+        uint32_t highWaterMark = uxTaskGetStackHighWaterMark(NULL); //Obciązenie CPU
+        Serial.print("CPU Load: ");
+        Serial.println(highWaterMark);
+        */
+
+
+
+        
 
         // Odczekanie do następnego cyklu
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
@@ -139,7 +156,7 @@ void TaskGamepads(void *pvParameters) {
 // Co 50 ms odczytuje dane (z mutexem) i wysyła je przez ESP-NOW.
 void TaskESPNow(void *pvParameters) {
     (void)pvParameters;
-    const TickType_t xFrequency = pdMS_TO_TICKS(20); // Wysyłka co 20 ms
+    const TickType_t xFrequency = pdMS_TO_TICKS(40); // Wysyłka 25 razy na sekundę
     TickType_t xLastWakeTime = xTaskGetTickCount();
     Message_from_Pad localMsg;
     
@@ -192,7 +209,7 @@ void vTaskESPNowStats(void *pvParameters) {
         if (failedMessages == 0) {
             display.showMessage("ESP-NOW OK");
         } else {
-            display.showMessage("ESP-NOW ERROR");
+            display.showMessage("ESP-NOW ErrrrRROR");
         }
     }
 }
