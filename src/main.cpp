@@ -15,7 +15,7 @@
 DisplayManager display;
 
 // Adres MAC odbiornika – ustaw właściwy adres, do którego chcesz wysyłać dane
-uint8_t receiverMAC[] = {0xA0, 0xB7, 0x65, 0x4B, 0xC5, 0x30}; 
+//uint8_t receiverMAC[] = {0xA0, 0xB7, 0x65, 0x4B, 0xC5, 0x30}; 
 
 // Adresy I2C dla gamepadów
 constexpr uint8_t GAMEPAD1_ADDR = 0x50;
@@ -166,7 +166,14 @@ void TaskESPNow(void *pvParameters) {
         memcpy(&localMsg, &message, sizeof(Message_from_Pad));
         xSemaphoreGive(messageMutex);
 
-        esp_err_t result = esp_now_send(receiverMAC, (uint8_t *)&localMsg, sizeof(Message_from_Pad));
+        // Wysłanie danych przez ESP-NOW do monitora debug
+        esp_err_t result = esp_now_send(macMonitorDebug, (uint8_t *)&localMsg, sizeof(Message_from_Pad));
+        // Debug można odkomentować:
+        // if (result == ESP_OK) Serial.println("📡 Dane wysłane");
+        // else Serial.println("❌ Błąd wysyłania ESP-NOW");
+
+        // Wysłanie danych przez ESP-NOW do platformy mecanum
+        result = esp_now_send(macPlatformMecanum, (uint8_t *)&localMsg, sizeof(Message_from_Pad));
         // Debug można odkomentować:
         // if (result == ESP_OK) Serial.println("📡 Dane wysłane");
         // else Serial.println("❌ Błąd wysyłania ESP-NOW");
@@ -257,13 +264,23 @@ void setup() {
     }
     esp_now_register_send_cb(OnDataSent);
 
-    memcpy(peerInfo.peer_addr, receiverMAC, 6);
+
+    // Dodanie odbiorcy monitora debug
+    memcpy(peerInfo.peer_addr, macMonitorDebug, 6);
     peerInfo.channel = 0;
     peerInfo.encrypt = false;
     if (esp_now_add_peer(&peerInfo) != ESP_OK) {
         Serial.println("❌ Failed to add peer");
         return;
     }
+
+    // Dodanie odbiorcy platformy mecanum
+    memcpy(peerInfo.peer_addr, macPlatformMecanum, 6);
+    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+        Serial.println("❌ Failed to add peer");
+        return;
+    }
+
 
     // Utworzenie mutexu do ochrony globalnej struktury danych
     messageMutex = xSemaphoreCreateMutex();
