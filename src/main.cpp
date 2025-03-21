@@ -3,6 +3,9 @@
 #include <esp_now.h>
 #include <WiFi.h>
 #include "parameters.h"
+#include "messages.h"
+#include "mac_adresses.h"
+#include "errors.h"
 #include <SPI.h>
 #include <joystick_read.h>
 #include <TFT_eSPI.h>
@@ -14,8 +17,6 @@
 //TFT Display
 DisplayManager display;
 
-// Adres MAC odbiornika – ustaw właściwy adres, do którego chcesz wysyłać dane
-//uint8_t receiverMAC[] = {0xA0, 0xB7, 0x65, 0x4B, 0xC5, 0x30}; 
 
 // Adresy I2C dla gamepadów
 constexpr uint8_t GAMEPAD1_ADDR = 0x50;
@@ -58,7 +59,7 @@ Message_from_Pad message;
 // Mutex do ochrony globalnej struktury (odczyt/zapis)
 SemaphoreHandle_t messageMutex = NULL;
 
-// Statystyki transmisji (opcjonalnie)
+// Statystyki transmisji (opcjonalnie) i czasy
 volatile uint32_t totalMessages = 0;
 volatile uint32_t failedMessages = 0;
 volatile uint32_t lastFailedCount = 0;
@@ -66,6 +67,9 @@ volatile uint32_t failedPerSecond = 0;
 volatile int consecutiveFailures = 0;       // Licznik niepowodzeń esp-now
 volatile int espNowStatus = 0;              // 0 = OK, 1 = WARNING, 2 = ERROR
 
+//zmienne do sprawdzania heartbeatu osobne dla kadego peera (monitora i platformy), w przyszłości kolejne peery
+volatile TickType_t lastHeartbeatTimeMonitor =0;
+volatile TickType_t lastHeartbeatTimePlatform =0;    
   
 
 
@@ -83,6 +87,8 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 }
 
 // ----- TASK 1: Odczyt danych gamepadów (TaskGamepads) -----
+// Co 25 ms odczytuje dane z gamepadów, normalizuje je i zapisuje do globalnej struktury.
+// Ochrona danych za pomocą mutexu.
 void TaskGamepads(void *pvParameters) {
     (void)pvParameters;
     const TickType_t xFrequency = pdMS_TO_TICKS(25);  // Odczyt 40 razy na sekundę
@@ -90,7 +96,7 @@ void TaskGamepads(void *pvParameters) {
 
     while (1) {
         // Odczyt danych i normalizacja poza sekcją krytyczną
-        unsigned long localTimestamp = millis();            // Odczyt czasu uzyty do heartbeatu
+        //unsigned long localTimestamp = millis();            // Odczyt czasu uzyty do heartbeatu, stara wersja
         
         // Odczyt surowych wartości joysticków
         int localL_Joystick_raw_x = ss1.analogRead(14);
@@ -110,7 +116,7 @@ void TaskGamepads(void *pvParameters) {
 
         // Krótka sekcja krytyczna – kopiowanie lokalnych danych do globalnej struktury
         xSemaphoreTake(messageMutex, portMAX_DELAY);
-        message.timestamp = localTimestamp;
+        //message.timestamp = localTimestamp;
         
         message.L_Joystick_raw_x = localL_Joystick_raw_x;
         message.L_Joystick_raw_y = localL_Joystick_raw_y;
@@ -142,18 +148,13 @@ void TaskGamepads(void *pvParameters) {
         Serial.print("CPU Load: ");
         Serial.println(highWaterMark);
         */
-
-
-
-        
-
         // Odczekanie do następnego cyklu
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
 
 // ----- TASK 2: Wysyłanie danych ESP-NOW (TaskESPNow) -----
-// Co 50 ms odczytuje dane (z mutexem) i wysyła je przez ESP-NOW.
+// Co 40 ms odczytuje dane (z mutexem) i wysyła je przez ESP-NOW.
 void TaskESPNow(void *pvParameters) {
     (void)pvParameters;
     const TickType_t xFrequency = pdMS_TO_TICKS(40); // Wysyłka 25 razy na sekundę
@@ -183,8 +184,9 @@ void TaskESPNow(void *pvParameters) {
 }
 
 
-// ----- TASK 3: Wyświetlanie statystyk ESP-NOW (vTaskESPNowStats) -----
-void vTaskESPNowStats(void *pvParameters) {
+// ----- TASK 3: Wyświetlanie danych na wyswietlaczu TFT -----
+// Co 40 ms aktualizuje wyświetlacz TFT z informacjami o statystykach ESP-NOW.
+void TaskTFTScreen(void *pvParameters) {
     (void)pvParameters;
     const TickType_t xFrequency = pdMS_TO_TICKS(40); // Aktualizacja co 40 ms
     TickType_t xLastWakeTime = xTaskGetTickCount();
@@ -192,13 +194,6 @@ void vTaskESPNowStats(void *pvParameters) {
 
     while (1) {
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
-
-        TickType_t currentTimestamp = xTaskGetTickCount();
-        TickType_t elapsedTime = currentTimestamp - lastTimestamp;
-        lastTimestamp = currentTimestamp;
-        float secondsElapsed = elapsedTime / (float)configTICK_RATE_HZ;
-        failedPerSecond = (failedMessages - lastFailedCount) / secondsElapsed;
-        lastFailedCount = failedMessages;
 
         // Odczytaj wartości joysticków
         xSemaphoreTake(messageMutex, portMAX_DELAY);
@@ -220,6 +215,28 @@ void vTaskESPNowStats(void *pvParameters) {
         }
     }
 }
+
+//-----------------Task 4: Sprawdzanie heartbeatu-----------//
+// Celem jest sprawdzenie, czy dane z gamepadów są nadal przesyłane do platformy mecanum oraz do monitora debug
+// Jeśli nie, celem jest wyświetlenie tej wiadomoci na wyświetlaczu TFT w tasku TaskTFTScreen
+// zmiana nazewnictwa tasku vTaskESPNowStats na TaskTFTScreen
+void TaskCheckHeartbeat(void *pvParameters) {
+    (void)pvParameters;
+    const TickType_t xFrequency = pdMS_TO_TICKS(50); // Sprawdzanie co 50 ms
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+
+    while (1) {
+        volatile TickType_t currentTime = xTaskGetTickCount();
+
+        // Sprawdź, czy różnica w czasie przekroczyła limit
+        if ((currentTime - lastHeartbeatTimeMonitor) > pdMS_TO_TICKS(500)) {
+            Serial.println("⚠️ Brak heartbeatu Monitora!");
+            // Możesz dodać np. restart ESP-NOW, zmianę kanału itd.
+        }
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
+}
+
 
 
 void setup() {
@@ -290,9 +307,10 @@ void setup() {
     }
 
     // Tworzenie tasków FreeRTOS
-    xTaskCreate(TaskGamepads, "Gamepads", 4096, NULL, 1, NULL);
-    xTaskCreate(TaskESPNow, "ESPNowSend", 4096, NULL, 1, NULL);
-    xTaskCreate(vTaskESPNowStats, "ESPNowStats", 4096, NULL, 1, NULL);
+    xTaskCreate(TaskGamepads, "Gamepads", 4096, NULL, 1, NULL);                 //task do odczytu joysticków
+    xTaskCreate(TaskESPNow, "ESPNowSend", 4096, NULL, 1, NULL);                 //task do wysyłania danych przez ESP-NOW
+    xTaskCreate(TaskTFTScreen, "TFTScreen", 4096, NULL, 1, NULL);               //task do statystyk
+    xTaskCreate(TaskCheckHeartbeat, "Heartbeat", 4096, NULL, 1, NULL);          //task do sprawdzania heartbeatu
 }
 
 void loop() {
