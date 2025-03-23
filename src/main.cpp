@@ -17,37 +17,8 @@
 //TFT Display
 DisplayManager display;
 
-
-// Adresy I2C dla gamepadów
-constexpr uint8_t GAMEPAD1_ADDR = 0x50;
-constexpr uint8_t GAMEPAD2_ADDR = 0x51;
-
-// Mapowanie przycisków
-constexpr uint8_t BUTTON_X      = 6;
-constexpr uint8_t BUTTON_Y      = 2;
-constexpr uint8_t BUTTON_A      = 5;
-constexpr uint8_t BUTTON_B      = 1;
-constexpr uint8_t BUTTON_SELECT = 0;
-constexpr uint8_t BUTTON_START  = 16;
-const uint32_t button_mask = (1UL << BUTTON_X) | (1UL << BUTTON_Y) | (1UL << BUTTON_START) |
-                             (1UL << BUTTON_A) | (1UL << BUTTON_B) | (1UL << BUTTON_SELECT);
-const uint32_t button_mask2 = button_mask;
-
-
-
-// ----- Globalne zmienne i obiekty -----
-
-//zmienne do przechowywania wartości dryftu joysticków
-
-
 // Obiekty do obsługi gamepadów
 Adafruit_seesaw ss1, ss2;
-
-volatile int offsetL_X = 0;
-volatile int offsetL_Y = 0;
-volatile int offsetR_X = 0;
-volatile int offsetR_Y = 0;
- 
 
 JoystickReader joystickReaderL(offsetL_X, offsetL_Y, true, true);
 JoystickReader joystickReaderR(offsetR_X, offsetR_Y, false, false);
@@ -56,35 +27,28 @@ JoystickReader joystickReaderR(offsetR_X, offsetR_Y, false, false);
 // Globalna struktura wiadomości z pada (heartbeat w polu timestamp)
 Message_from_Pad message;
 
-// Mutex do ochrony globalnej struktury (odczyt/zapis)
-SemaphoreHandle_t messageMutex = NULL;
-
-// Statystyki transmisji (opcjonalnie) i czasy
-volatile uint32_t totalMessages = 0;
-volatile uint32_t failedMessages = 0;
-volatile uint32_t lastFailedCount = 0;
-volatile uint32_t failedPerSecond = 0;
-volatile int consecutiveFailures = 0;       // Licznik niepowodzeń esp-now
-volatile int espNowStatus = 0;              // 0 = OK, 1 = WARNING, 2 = ERROR
-
-//zmienne do sprawdzania heartbeatu osobne dla kadego peera (monitora i platformy), w przyszłości kolejne peery
-volatile TickType_t lastHeartbeatTimeMonitor =0;
-volatile TickType_t lastHeartbeatTimePlatform =0;    
-  
-
-
-// Konfiguracja ESP-NOW
-esp_now_peer_info_t peerInfo;
-
-// ----- Callback wysyłania -----
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-    totalMessages++;
-    if (status == ESP_NOW_SEND_SUCCESS) {
-        failedMessages = 0;
-    } else {
-        failedMessages++;
+    Serial.println("📡 OnDataSent called!");
+
+    if (memcmp(mac_addr, macMonitorDebug, 6) == 0) {
+        if (status == ESP_NOW_SEND_SUCCESS) {
+            Serial.print("✅ Monitor: OK ");
+        } else {
+            Serial.print("❌ Monitor: ERROR ");
+        }
+    }
+
+    if (memcmp(mac_addr, macPlatformMecanum, 6) == 0) {
+        if (status == ESP_NOW_SEND_SUCCESS) {
+             Serial.print("✅ Platform: OK ");
+        } else {
+            Serial.print("❌ Platform: ERROR ");
+        }
     }
 }
+
+
+
 
 // ----- TASK 1: Odczyt danych gamepadów (TaskGamepads) -----
 // Co 25 ms odczytuje dane z gamepadów, normalizuje je i zapisuje do globalnej struktury.
@@ -96,7 +60,7 @@ void TaskGamepads(void *pvParameters) {
 
     while (1) {
         // Odczyt danych i normalizacja poza sekcją krytyczną
-        //unsigned long localTimestamp = millis();            // Odczyt czasu uzyty do heartbeatu, stara wersja
+        unsigned long localTimestamp = millis();            // Odczyt czasu uzyty do heartbeatu
         
         // Odczyt surowych wartości joysticków
         int localL_Joystick_raw_x = ss1.analogRead(14);
@@ -116,7 +80,7 @@ void TaskGamepads(void *pvParameters) {
 
         // Krótka sekcja krytyczna – kopiowanie lokalnych danych do globalnej struktury
         xSemaphoreTake(messageMutex, portMAX_DELAY);
-        //message.timestamp = localTimestamp;
+        message.timestamp = localTimestamp;
         
         message.L_Joystick_raw_x = localL_Joystick_raw_x;
         message.L_Joystick_raw_y = localL_Joystick_raw_y;
@@ -132,23 +96,6 @@ void TaskGamepads(void *pvParameters) {
         message.R_Joystick_buttons_message = localR_Joystick_buttons_message;
         xSemaphoreGive(messageMutex);
 
-        // Przykładowe monitorowanie zużycia zasobow – można odkomentować
-        /*
-        UBaseType_t freeStack = uxTaskGetStackHighWaterMark(NULL); // Dostępna pamięć stosu dla tasku
-        Serial.print("Wolna pamięć stosu: ");
-        Serial.println(freeStack);
-
-        Serial.print("Free heap: ");                 // Dostępna pamięć heap (RAM)
-        Serial.println(esp_get_free_heap_size());
-
-        Serial.print("Free PSRAM: ");                // Dostępna pamięć PSRAM (dodatkowa pamięć RAM)
-        Serial.println(ESP.getFreePsram());
-
-        uint32_t highWaterMark = uxTaskGetStackHighWaterMark(NULL); //Obciązenie CPU
-        Serial.print("CPU Load: ");
-        Serial.println(highWaterMark);
-        */
-        // Odczekanie do następnego cyklu
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
@@ -164,21 +111,27 @@ void TaskESPNow(void *pvParameters) {
     while (1) {
 
         xSemaphoreTake(messageMutex, portMAX_DELAY);
+        totalMessages++;
+        message.totalMessages = totalMessages;
         memcpy(&localMsg, &message, sizeof(Message_from_Pad));
         xSemaphoreGive(messageMutex);
 
         // Wysłanie danych przez ESP-NOW do monitora debug
         esp_err_t result = esp_now_send(macMonitorDebug, (uint8_t *)&localMsg, sizeof(Message_from_Pad));
-        // Debug można odkomentować:
-        // if (result == ESP_OK) Serial.println("📡 Dane wysłane");
-        // else Serial.println("❌ Błąd wysyłania ESP-NOW");
+        if (result == ESP_OK) ESP_NOW_Monitor_Error = false;
+        else {
+            ESP_NOW_Monitor_Error = true;
+            ESP_NOW_Monitor_Send_Error_Counter++;
+        }
+       
 
         // Wysłanie danych przez ESP-NOW do platformy mecanum
         result = esp_now_send(macPlatformMecanum, (uint8_t *)&localMsg, sizeof(Message_from_Pad));
-        // Debug można odkomentować:
-        // if (result == ESP_OK) Serial.println("📡 Dane wysłane");
-        // else Serial.println("❌ Błąd wysyłania ESP-NOW");
-
+        if (result == ESP_OK) ESP_NOW_Platform_Error = false;
+        else {
+            ESP_NOW_Platform_Error = true;
+            ESP_NOW_Platform_Send_Error_Counter++;
+        }
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
@@ -201,41 +154,38 @@ void TaskTFTScreen(void *pvParameters) {
         int ly = message.L_Joystick_y_message;
         int rx = message.R_Joystick_x_message;
         int ry = message.R_Joystick_y_message;
+        bool L_Button_A = !(message.L_Joystick_buttons_message & (1UL << BUTTON_A));
+        bool L_Button_B = !(message.L_Joystick_buttons_message & (1UL << BUTTON_B));
+        bool L_Button_X = !(message.L_Joystick_buttons_message & (1UL << BUTTON_X));
+        bool L_Button_Y = !(message.L_Joystick_buttons_message & (1UL << BUTTON_Y));
+        bool L_Button_SELECT = !(message.L_Joystick_buttons_message & (1UL << BUTTON_SELECT));
+        bool L_Button_START = !(message.L_Joystick_buttons_message & (1UL << BUTTON_START));
+        bool R_Button_A = !(message.R_Joystick_buttons_message & (1UL << BUTTON_A));
+        bool R_Button_B = !(message.R_Joystick_buttons_message & (1UL << BUTTON_B));
+        bool R_Button_X = !(message.R_Joystick_buttons_message & (1UL << BUTTON_X));
+        bool R_Button_Y = !(message.R_Joystick_buttons_message & (1UL << BUTTON_Y));
+        bool R_Button_SELECT = !(message.R_Joystick_buttons_message & (1UL << BUTTON_SELECT));
+        bool R_Button_START = !(message.R_Joystick_buttons_message & (1UL << BUTTON_START));
         xSemaphoreGive(messageMutex);
 
         // Aktualizacja wyświetlacza
         display.updateJoystick(lx, ly, rx, ry);
-        display.updateStatus(totalMessages, failedMessages);
+        display.updateStatus(lx, ly, rx, ry, L_Button_A, L_Button_B, L_Button_X, L_Button_Y, L_Button_SELECT, L_Button_START, R_Button_A, R_Button_B, R_Button_X, R_Button_Y, R_Button_SELECT, R_Button_START);
 
-        // Wyświetl komunikat
-        if (failedMessages == 0) {
+        /* Wyświetl komunikat
+        if (ESP_NOW_Monitor_Error || ESP_NOW_Platform_Error) {
             display.showMessage("ESP-NOW OK");
-        } else {
-            display.showMessage("ESP-NOW ErrrrRROR");
+        } else { 
+            display.showMessage("ESP-NOW ERROR");
         }
+        */
+       display.updateButtonsL(L_Button_A, L_Button_B, L_Button_X, L_Button_Y, L_Button_SELECT, L_Button_START);
+       display.updateButtonsR(R_Button_A, R_Button_B, R_Button_X, R_Button_Y, R_Button_SELECT, R_Button_START);
     }
 }
 
-//-----------------Task 4: Sprawdzanie heartbeatu-----------//
-// Celem jest sprawdzenie, czy dane z gamepadów są nadal przesyłane do platformy mecanum oraz do monitora debug
-// Jeśli nie, celem jest wyświetlenie tej wiadomoci na wyświetlaczu TFT w tasku TaskTFTScreen
-// zmiana nazewnictwa tasku vTaskESPNowStats na TaskTFTScreen
-void TaskCheckHeartbeat(void *pvParameters) {
-    (void)pvParameters;
-    const TickType_t xFrequency = pdMS_TO_TICKS(50); // Sprawdzanie co 50 ms
-    TickType_t xLastWakeTime = xTaskGetTickCount();
 
-    while (1) {
-        volatile TickType_t currentTime = xTaskGetTickCount();
 
-        // Sprawdź, czy różnica w czasie przekroczyła limit
-        if ((currentTime - lastHeartbeatTimeMonitor) > pdMS_TO_TICKS(500)) {
-            Serial.println("⚠️ Brak heartbeatu Monitora!");
-            // Możesz dodać np. restart ESP-NOW, zmianę kanału itd.
-        }
-        vTaskDelayUntil(&xLastWakeTime, xFrequency);
-    }
-}
 
 
 
@@ -293,6 +243,7 @@ void setup() {
 
     // Dodanie odbiorcy platformy mecanum
     memcpy(peerInfo.peer_addr, macPlatformMecanum, 6);
+    peerInfo.encrypt = false;
     if (esp_now_add_peer(&peerInfo) != ESP_OK) {
         Serial.println("❌ Failed to add peer");
         return;
@@ -309,8 +260,7 @@ void setup() {
     // Tworzenie tasków FreeRTOS
     xTaskCreate(TaskGamepads, "Gamepads", 4096, NULL, 1, NULL);                 //task do odczytu joysticków
     xTaskCreate(TaskESPNow, "ESPNowSend", 4096, NULL, 1, NULL);                 //task do wysyłania danych przez ESP-NOW
-    xTaskCreate(TaskTFTScreen, "TFTScreen", 4096, NULL, 1, NULL);               //task do statystyk
-    xTaskCreate(TaskCheckHeartbeat, "Heartbeat", 4096, NULL, 1, NULL);          //task do sprawdzania heartbeatu
+    xTaskCreate(TaskTFTScreen, "TFTScreen", 4096, NULL, 1, NULL);               //task do wyświetlania danych na ekranie TFT
 }
 
 void loop() {
