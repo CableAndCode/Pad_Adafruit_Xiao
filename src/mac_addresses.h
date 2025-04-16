@@ -1,5 +1,5 @@
-#ifndef MAC_ADRESSES_H
-#define MAC_ADRESSES_H
+#ifndef MAC_ADDRESSES_H
+#define MAC_ADDRESSES_H
 
 #include <Arduino.h>
 
@@ -19,4 +19,4 @@ uint8_t macMonitorDebug[]       = {0xA0, 0xB7, 0x65, 0x4B, 0xC5, 0x30};
 
 
 
-#endif // MAC_ADRESSES_H
+#endif // MAC_ADDRESSES_H

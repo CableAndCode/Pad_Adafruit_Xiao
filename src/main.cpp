@@ -4,7 +4,7 @@
 #include <WiFi.h>
 #include "parameters.h"
 #include "messages.h"
-#include "mac_adresses.h"
+#include "mac_addresses.h"
 #include "errors.h"
 #include <SPI.h>
 #include <joystick_read.h>
@@ -24,15 +24,15 @@ JoystickReader joystickReaderL(offsetL_X, offsetL_Y, true, true);
 JoystickReader joystickReaderR(offsetR_X, offsetR_Y, false, false);
 
 
-// Globalna struktura wiadomości z pada (heartbeat w polu timestamp)
+// Globalna struktura wiadomości z pada
 Message_from_Pad message;
 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-    Serial.println("📡 OnDataSent called!");
+    //Serial.println("📡 OnDataSent called!");
 
     if (memcmp(mac_addr, macMonitorDebug, 6) == 0) {
         if (status == ESP_NOW_SEND_SUCCESS) {
-            Serial.print("✅ Monitor: OK ");
+            //Serial.print("✅ Monitor: OK ");
         } else {
             Serial.print("❌ Monitor: ERROR ");
         }
@@ -40,7 +40,7 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
     if (memcmp(mac_addr, macPlatformMecanum, 6) == 0) {
         if (status == ESP_NOW_SEND_SUCCESS) {
-             Serial.print("✅ Platform: OK ");
+             //Serial.print("✅ Platform: OK ");
         } else {
             Serial.print("❌ Platform: ERROR ");
         }
@@ -60,7 +60,7 @@ void TaskGamepads(void *pvParameters) {
 
     while (1) {
         // Odczyt danych i normalizacja poza sekcją krytyczną
-        unsigned long localTimestamp = millis();            // Odczyt czasu uzyty do heartbeatu
+        unsigned long localTimeStamp = millis();            // Odczyt czasu uzyty do heartbeatu
         
         // Odczyt surowych wartości joysticków
         int localL_Joystick_raw_x = ss1.analogRead(14);
@@ -80,7 +80,7 @@ void TaskGamepads(void *pvParameters) {
 
         // Krótka sekcja krytyczna – kopiowanie lokalnych danych do globalnej struktury
         xSemaphoreTake(messageMutex, portMAX_DELAY);
-        message.timestamp = localTimestamp;
+        message.timeStamp = localTimeStamp;
         
         message.L_Joystick_raw_x = localL_Joystick_raw_x;
         message.L_Joystick_raw_y = localL_Joystick_raw_y;
@@ -104,7 +104,7 @@ void TaskGamepads(void *pvParameters) {
 // Co 40 ms odczytuje dane (z mutexem) i wysyła je przez ESP-NOW.
 void TaskESPNow(void *pvParameters) {
     (void)pvParameters;
-    const TickType_t xFrequency = pdMS_TO_TICKS(40); // Wysyłka 25 razy na sekundę
+    const TickType_t xFrequency = pdMS_TO_TICKS(50); // Wysyłka 25 razy na sekundę
     TickType_t xLastWakeTime = xTaskGetTickCount();
     Message_from_Pad localMsg;
     
@@ -112,13 +112,16 @@ void TaskESPNow(void *pvParameters) {
 
         xSemaphoreTake(messageMutex, portMAX_DELAY);
         totalMessages++;
-        message.totalMessages = totalMessages;
+        message.messageSequenceNumber = totalMessages;
         memcpy(&localMsg, &message, sizeof(Message_from_Pad));
         xSemaphoreGive(messageMutex);
 
         // Wysłanie danych przez ESP-NOW do monitora debug
         esp_err_t result = esp_now_send(macMonitorDebug, (uint8_t *)&localMsg, sizeof(Message_from_Pad));
-        if (result == ESP_OK) ESP_NOW_Monitor_Error = false;
+        if (result == ESP_OK) {
+            //Serial.println("Wysłano dane do monitora");
+            ESP_NOW_Monitor_Error = false;
+        }
         else {
             ESP_NOW_Monitor_Error = true;
             ESP_NOW_Monitor_Send_Error_Counter++;
@@ -127,7 +130,10 @@ void TaskESPNow(void *pvParameters) {
 
         // Wysłanie danych przez ESP-NOW do platformy mecanum
         result = esp_now_send(macPlatformMecanum, (uint8_t *)&localMsg, sizeof(Message_from_Pad));
-        if (result == ESP_OK) ESP_NOW_Platform_Error = false;
+        if (result == ESP_OK) {
+            //Serial.println("Wysłano dane do platformy");
+            ESP_NOW_Platform_Error = false;
+        }
         else {
             ESP_NOW_Platform_Error = true;
             ESP_NOW_Platform_Send_Error_Counter++;
@@ -141,7 +147,7 @@ void TaskESPNow(void *pvParameters) {
 // Co 40 ms aktualizuje wyświetlacz TFT z informacjami o statystykach ESP-NOW.
 void TaskTFTScreen(void *pvParameters) {
     (void)pvParameters;
-    const TickType_t xFrequency = pdMS_TO_TICKS(40); // Aktualizacja co 40 ms
+    const TickType_t xFrequency = pdMS_TO_TICKS(50); // Aktualizacja 20 razy na sekundę
     TickType_t xLastWakeTime = xTaskGetTickCount();
     TickType_t lastTimestamp = xTaskGetTickCount();
 
@@ -170,7 +176,7 @@ void TaskTFTScreen(void *pvParameters) {
 
         // Aktualizacja wyświetlacza
         display.updateJoystick(lx, ly, rx, ry);
-        display.updateStatus(lx, ly, rx, ry, L_Button_A, L_Button_B, L_Button_X, L_Button_Y, L_Button_SELECT, L_Button_START, R_Button_A, R_Button_B, R_Button_X, R_Button_Y, R_Button_SELECT, R_Button_START);
+        //display.updateStatus(lx, ly, rx, ry, L_Button_A, L_Button_B, L_Button_X, L_Button_Y, L_Button_SELECT, L_Button_START, R_Button_A, R_Button_B, R_Button_X, R_Button_Y, R_Button_SELECT, R_Button_START);
 
         /* Wyświetl komunikat
         if (ESP_NOW_Monitor_Error || ESP_NOW_Platform_Error) {
@@ -258,8 +264,8 @@ void setup() {
     }
 
     // Tworzenie tasków FreeRTOS
-    xTaskCreate(TaskGamepads, "Gamepads", 4096, NULL, 1, NULL);                 //task do odczytu joysticków
-    xTaskCreate(TaskESPNow, "ESPNowSend", 4096, NULL, 1, NULL);                 //task do wysyłania danych przez ESP-NOW
+    xTaskCreate(TaskGamepads, "Gamepads", 2048, NULL, 1, NULL);                 //task do odczytu joysticków
+    xTaskCreate(TaskESPNow, "ESPNowSend", 2048, NULL, 1, NULL);                 //task do wysyłania danych przez ESP-NOW
     xTaskCreate(TaskTFTScreen, "TFTScreen", 4096, NULL, 1, NULL);               //task do wyświetlania danych na ekranie TFT
 }
 
