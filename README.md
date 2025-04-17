@@ -1,3 +1,20 @@
+
+
+
+Pad Controller is a custom ESP-NOW remote based on Xiao ESP32-S3, designed to send joystick and button input to a mecanum platform in real-time using FreeRTOS. It includes TFT visualization, synchronization with mutex, and future plans for diagnostics, power integration, and secure communication.
+
+
+### Libraries Used
+- [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI) – GPLv3
+- [Adafruit seesaw library](https://github.com/adafruit/Adafruit_Seesaw) – MIT
+- Arduino Core for ESP32 – LGPL / Apache 2.0
+
+### License
+This project is licensed under the GNU General Public License v3.0 – see the [LICENSE](LICENSE) file for details.
+
+
+
+
 ## Road Map – Pad Controller (ESP-NOW, Xiao ESP32-S3)
 
 ### Etap 1 – Minimalna funkcjonalność (MVP)
