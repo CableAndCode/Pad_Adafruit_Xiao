@@ -17,36 +17,34 @@ This project is licensed under the GNU General Public License v3.0 – see the [
 
 ## Road Map – Pad Controller (ESP-NOW, Xiao ESP32-S3)
 
-### Etap 1 – Minimalna funkcjonalność (MVP)
-- [x] Równoczesne wykonywanie zadań (FreeRTOS)
-- [x] Odczyt surowych wartości z joysticków
-- [x] Obsługa martwej strefy, histerezy i skalowania
-- [x] Serializacja danych do struktury
-- [x] Wysyłanie danych przez ESP-NOW do platformy
-- [x] Odbiór potwierdzony na platformie
-- [x] Wizualizacja danych na wyświetlaczu TFT
-- [x] Mechanizmy synchronizacji (ochrony spójności danych): użycie mutexa 
+### Stage 1 – Minimum Viable Product (MVP)
+- [x] Concurrent execution of tasks using FreeRTOS
+- [x] Reading raw values from analog joysticks
+- [x] Dead zone handling, hysteresis, and scaling for joystick input
+- [x] Serializing all gamepad data into a structured message
+- [x] Transmitting data via ESP-NOW to the mecanum platform
+- [x] Confirmed reception of data on the platform side (via OnDataSent callback)
+- [x] Visualizing current joystick and button data on the TFT screen
+- [x] Synchronization mechanisms to protect shared data using a FreeRTOS mutex
 
-### Etap 2 – Diagnostyka i interfejs lokalny
-- [ ] Usunięcie wizualizacji przycisków, lub ich przebudowa o jak najmniejszego rozmiaru
-- [ ] Dodanie pomiaru siły sygnału RSSI (funkcja esp_now_get_peer_rssi()), wyświetlenie na TFT
-- [ ] Ekran początkowy z wyświetleniem informacji po starcie układu, status połączeń
-- [ ] Wyświetlanie statusu błędów Pada na TFT
-- [ ] Wyświetlanie statusu błędów Platformy Mecanum na TFT
-- [ ] Wyśweitlanie statusu błędów Monitora na TFT (gdy już Monitor będzie w stanie wysyłać te błędy i statusy)
-- [ ] Wyświetlanie Parametrów Platformy Mecanum
+### Stage 2 – Diagnostics and Local Interface
+- [ ] Remove or redesign the button visualization for minimal screen usage
+- [ ] Display RSSI signal strength using `esp_now_get_peer_rssi()` on TFT
+- [ ] Initial splash screen on startup showing system information and connection status
+- [ ] Display Pad-side communication errors on the TFT
+- [ ] Display Mecanum Platform errors on the TFT
+- [ ] Display Monitor-side errors on the TFT (once monitor can send them)
+- [ ] Display live parameters received from the Mecanum Platform
 
+### Stage 3 – Power Supply and Ergonomics
+- [ ] Migrate from breadboard to a soldered protoboard; add physical power switch
+- [ ] Integrate battery monitoring and display battery level/status on TFT
+- [ ] Implement deep sleep and wake-up logic (via time or button triggers)
+- [ ] Add additional display screen(s) for alternate visualizations
+- [ ] Support for all buttons: L_select, L_start, L_mode, LXY, LAB, RXY, RAB, R_select, R_start, R_mode
+- [ ] Build a temporary or final enclosure for handheld use
 
-### Etap 3 – Zasilanie i ergonomia
-- [ ] Migracja z breadboard na płytkę uniwersalną, dodanie fizycznego włącznika - lutowanie
-- [ ] Integracja z baterią - ładowanie, pomiar, wyświetlanie na TFT
-- [ ] Obsługa uśpienia i wybudzania np.: czas, przyciski
-- [ ] Dodanie dodatkowego/dodatkowych Ekranu/ów z inną wizualizacją parametrów
-- [ ] Obsługa przycisków (L_select, L_start, L_mode LXY LAB, RXY RAB, R_select, R_start, R_mode)
-- [ ] Obudowa robocza lub docelowa
-
-
-### Etap 4 – Rozszerzenia opcjonalne
-- [ ] Szyfrowanie ESP-NOW
-- [ ] Konfigurowalne profile sterowania
+### Stage 4 – Optional Extensions
+- [ ] Enable ESP-NOW encryption for secure communication
+- [ ] Add user-selectable control profiles (e.g., tuning curves, axis inversion, presets)
 
