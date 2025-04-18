@@ -9,6 +9,10 @@
 .vscode/launch.json
 .vscode/ipch
 
+lib/
+test/
+.zip
+
 # OS X metadata
 .DS_Store
 
