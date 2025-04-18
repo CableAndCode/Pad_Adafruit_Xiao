@@ -1,19 +1,50 @@
+## Pad Controller – Xiao ESP32-S3 + ESP-NOW + FreeRTOS
 
+This is a custom ESP-NOW-based gamepad controller built using the Xiao ESP32-S3. It reads two analog joysticks via I2C (using Adafruit seesaw), normalizes and serializes the data into a structured message, and transmits it wirelessly via ESP-NOW to two independent recipients:
+- a mecanum robot platform (in development), and
+- a dedicated debug monitor ESP32 for telemetry and diagnostics.
 
+Future development includes diagnostics, power monitoring, enclosure, and optional security features.
 
-Pad Controller is a custom ESP-NOW remote based on Xiao ESP32-S3, designed to send joystick and button input to a mecanum platform in real-time using FreeRTOS. It includes TFT visualization, synchronization with mutex, and future plans for diagnostics, power integration, and secure communication.
+---
 
+### Components Used
+
+| Part                         | Model / Type              | Notes                                |
+|------------------------------|---------------------------|--------------------------------------|
+| Main MCU                     | Seeed Studio Xiao ESP32-S3| ESP-NOW, FreeRTOS, I2C capable       |
+| Joystick modules (x2)        | Adafruit Seesaw           | I2C interface, handles buttons too   |
+| TFT display                  | 1.8" SPI TFT (ST7735)     | 128x160, works with TFT_eSPI         |
+| Buttons                      | Built-in via Seesaw       | Read as digital GPIO bitmask         |
+| Misc wiring                  | Dupont / soldered         | Breadboard-friendly prototyping      |
+
+---
+
+### Pin Connections
+
+| Signal           | Xiao ESP32-S3 Pin | Connected Device     |
+|------------------|-------------------|-----------------------|
+| I2C SDA          | GPIO 5            | Both Seesaw modules  |
+| I2C SCL          | GPIO 6            | Both Seesaw modules  |
+| TFT SCLK         | GPIO 10           | TFT Display          |
+| TFT MOSI         | GPIO 11           | TFT Display          |
+| TFT DC           | GPIO 7            | TFT Display          |
+| TFT CS           | GPIO 8            | TFT Display          |
+| TFT RESET        | GPIO 9            | TFT Display          |
+
+---
 
 ### Libraries Used
 - [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI) – GPLv3
 - [Adafruit seesaw library](https://github.com/adafruit/Adafruit_Seesaw) – MIT
-- Arduino Core for ESP32 – LGPL / Apache 2.0
+- ESP32 Arduino Core (including ESP-NOW and WiFi) – Apache 2.0 / LGPL
+
+---
 
 ### License
-This project is licensed under the GNU General Public License v3.0 – see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **GNU General Public License v3.0**. See the [LICENSE](LICENSE) file for full details.
 
-
-
+---
 
 ## Road Map – Pad Controller (ESP-NOW, Xiao ESP32-S3)
 
