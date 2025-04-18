@@ -1,3 +1,7 @@
+# Git ignore list for PlatformIO + ESP32 + macOS
+# Keeps the repo clean from build artifacts and personal settings
+
+
 .pio/
 .pio/libdeps/
 
@@ -8,6 +12,7 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+mac_addresses_private.h
 
 lib/
 test/
