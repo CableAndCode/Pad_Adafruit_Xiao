@@ -1,5 +1,10 @@
 ## Pad Controller – Xiao ESP32-S3 + ESP-NOW + FreeRTOS
 
+![Pad Controller Breadboard – Xiao ESP32-S3 + Seesaw](./esp-32_Adafruit_TFT.jpeg)
+
+*Prototype of the ESP-NOW based gamepad using two Adafruit Seesaw joysticks, Xiao ESP32-S3 and a 1.8" TFT SPI display.*
+
+
 This is a custom ESP-NOW-based gamepad controller built using the Xiao ESP32-S3. It reads two analog joysticks via I2C (using Adafruit seesaw), normalizes and serializes the data into a structured message, and transmits it wirelessly via ESP-NOW to two independent recipients:
 - a mecanum robot platform (in development), and
 - a dedicated debug monitor ESP32 for telemetry and diagnostics.
