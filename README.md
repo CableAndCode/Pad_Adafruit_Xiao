@@ -31,11 +31,11 @@ Future development includes diagnostics, power monitoring, enclosure, and option
 |------------------|-------------------|-----------------------|
 | I2C SDA          | GPIO 5            | Both Seesaw modules  |
 | I2C SCL          | GPIO 6            | Both Seesaw modules  |
-| TFT SCLK         | GPIO 10           | TFT Display          |
-| TFT MOSI         | GPIO 11           | TFT Display          |
-| TFT DC           | GPIO 7            | TFT Display          |
-| TFT CS           | GPIO 8            | TFT Display          |
-| TFT RESET        | GPIO 9            | TFT Display          |
+| TFT SCLK         | GPIO 07           | TFT Display          |
+| TFT MOSI         | GPIO 09           | TFT Display          |
+| TFT DC           | GPIO 04           | TFT Display          |
+| TFT CS           | GPIO 02           | TFT Display          |
+| TFT RESET        | GPIO 03           | TFT Display          |
 
 ---
 

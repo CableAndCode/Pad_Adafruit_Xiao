@@ -7,7 +7,7 @@
 
 #include "parameters.h"
 #include "messages.h"
-#include "mac_addresses.h"
+#include "mac_addresses_private.h"
 #include "errors.h"
 #include "joystick_read.h"
 #include "DisplayManager.h"
@@ -167,10 +167,10 @@ void setup() {
 
     // Initialize gamepads
     if (!ss1.begin(GAMEPAD1_ADDR) || !ss2.begin(GAMEPAD2_ADDR)) {
-        Serial.println("❌ Gamepad not found!");
+        Serial.println("Gamepad not found!");
         while (1) delay(100);
     }
-    Serial.println("✅ Gamepad OK!");
+    Serial.println("Gamepad OK!");
 
     // Configure input pins for buttons
     ss1.pinModeBulk(button_mask, INPUT_PULLUP);
@@ -193,7 +193,7 @@ void setup() {
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
     if (esp_now_init() != ESP_OK) {
-        Serial.println("❌ ESP-NOW Init Failed");
+        Serial.println("ESP-NOW Init Failed");
         return;
     }
     esp_now_register_send_cb(OnDataSent);
@@ -203,7 +203,7 @@ void setup() {
     peerInfo.channel = 0;
     peerInfo.encrypt = false;
     if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-        Serial.println("❌ Failed to add peer (monitor)");
+        Serial.println("Failed to add peer (monitor)");
         return;
     }
 
@@ -211,14 +211,14 @@ void setup() {
     memcpy(peerInfo.peer_addr, macPlatformMecanum, 6);
     peerInfo.encrypt = false;
     if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-        Serial.println("❌ Failed to add peer (platform)");
+        Serial.println("Failed to add peer (platform)");
         return;
     }
 
     // Create mutex to protect shared message structure
     messageMutex = xSemaphoreCreateMutex();
     if (messageMutex == NULL) {
-        Serial.println("❌ Failed to create mutex!");
+        Serial.println("Failed to create mutex!");
         while (1) delay(100);
     }
 

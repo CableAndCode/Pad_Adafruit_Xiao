@@ -22,7 +22,7 @@ const uint32_t button_mask = (1UL << BUTTON_X) | (1UL << BUTTON_Y) |
                              (1UL << BUTTON_B) | (1UL << BUTTON_SELECT);
 const uint32_t button_mask2 = button_mask;
 
-// ====== Dead zone for joysticks (not used yet) ======
+// ====== Dead zone for joysticks ======
 #define DEAD_ZONE 10
 
 // ====== Global variables (extern) ======
