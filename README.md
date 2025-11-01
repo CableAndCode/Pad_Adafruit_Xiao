@@ -46,41 +46,40 @@ Future development includes diagnostics, power monitoring, enclosure, and option
 
 ---
 
+---
+### TFT_eSPI Configuration (User_Setup.h)
+
+For correct operation with the Xiao ESP32-S3 and the 1.8" ST7735 SPI TFT display, make sure your User_Setup.h in the TFT_eSPI library includes the following (or equivalent) definitions:
+
+#define ST7735_DRIVER
+#define TFT_WIDTH 128
+#define TFT_HEIGHT 160
+#define ST7735_REDTAB
+
+#define TFT_MOSI 9
+#define TFT_SCLK 7
+#define TFT_CS 2
+#define TFT_DC 4
+#define TFT_RST 3
+#define USE_HSPI_PORT
+#define SPI_FREQUENCY 27000000
+#define SPI_READ_FREQUENCY 20000000
+#define SPI_TOUCH_FREQUENCY 2500000
+#define TFT_RGB_ORDER TFT_RGB
+
+#define LOAD_GLCD
+#define LOAD_FONT2
+#define LOAD_FONT4
+#define LOAD_FONT6
+#define LOAD_FONT7
+#define LOAD_FONT8
+#define LOAD_GFXFF
+#define SMOOTH_FONT
+
+---
+
 ### License
 This project is licensed under the **GNU General Public License v3.0**. See the [LICENSE](LICENSE) file for full details.
 
 ---
-
-## Road Map – Pad Controller (ESP-NOW, Xiao ESP32-S3)
-
-### Stage 1 – Minimum Viable Product (MVP)
-- [x] Concurrent execution of tasks using FreeRTOS
-- [x] Reading raw values from analog joysticks
-- [x] Dead zone handling, hysteresis, and scaling for joystick input
-- [x] Serializing all gamepad data into a structured message
-- [x] Transmitting data via ESP-NOW to the mecanum platform
-- [x] Confirmed reception of data on the platform side (via OnDataSent callback)
-- [x] Visualizing current joystick and button data on the TFT screen
-- [x] Synchronization mechanisms to protect shared data using a FreeRTOS mutex
-
-### Stage 2 – Diagnostics and Local Interface
-- [ ] Remove or redesign the button visualization for minimal screen usage
-- [ ] Display RSSI signal strength using `esp_now_get_peer_rssi()` on TFT
-- [ ] Initial splash screen on startup showing system information and connection status
-- [ ] Display Pad-side communication errors on the TFT
-- [ ] Display Mecanum Platform errors on the TFT
-- [ ] Display Monitor-side errors on the TFT (once monitor can send them)
-- [ ] Display live parameters received from the Mecanum Platform
-
-### Stage 3 – Power Supply and Ergonomics
-- [ ] Migrate from breadboard to a soldered protoboard; add physical power switch
-- [ ] Integrate battery monitoring and display battery level/status on TFT
-- [ ] Implement deep sleep and wake-up logic (via time or button triggers)
-- [ ] Add additional display screen(s) for alternate visualizations
-- [ ] Support for all buttons: L_select, L_start, L_mode, LXY, LAB, RXY, RAB, R_select, R_start, R_mode
-- [ ] Build a temporary or final enclosure for handheld use
-
-### Stage 4 – Optional Extensions
-- [ ] Enable ESP-NOW encryption for secure communication
-- [ ] Add user-selectable control profiles (e.g., tuning curves, axis inversion, presets)
 
