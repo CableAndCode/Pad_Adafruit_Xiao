@@ -5,11 +5,10 @@
 *Prototype of the ESP-NOW based gamepad using two Adafruit Seesaw joysticks, Xiao ESP32-S3 and a 1.8" TFT SPI display.*
 
 
-This is a custom ESP-NOW-based gamepad controller built using the Xiao ESP32-S3. It reads two analog joysticks via I2C (using Adafruit seesaw), normalizes and serializes the data into a structured message, and transmits it wirelessly via ESP-NOW to two independent recipients:
-- a mecanum robot platform (in development), and
-- a dedicated debug monitor ESP32 for telemetry and diagnostics.
-
-Future development includes diagnostics, power monitoring, enclosure, and optional security features.
+This custom controller is built on the Xiao ESP32-S3 and communicates via ESP-NOW. It reads two analog joysticks using Adafruit Seesaw modules (I2C) and displays live data on a 1.8" ST7735 TFT screen using the TFT_eSPI library. All key functions run under FreeRTOS, enabling smooth and concurrent execution.
+The controller transmits structured control data to:
+- A mecanum wheel robot platform, and
+- A dedicated debug monitor ESP32 for telemetry and diagnostics.
 
 ---
 
