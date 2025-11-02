@@ -1,6 +1,8 @@
 ## Pad Controller – Xiao ESP32-S3 + ESP-NOW + FreeRTOS
 
 ![Pad Controller Breadboard – Xiao ESP32-S3 + Seesaw](./images/esp-32_Adafruit_TFT.jpeg)
+![Pad Controller Breadboard – Xiao ESP32-S3 + Seesaw Fritzing Diagram](./images/esp-32_Adafruit_TFT_Fritzing_Diagram.png)
+
 
 *Prototype of the ESP-NOW based gamepad using two Adafruit Seesaw joysticks, Xiao ESP32-S3 and a 1.8" TFT SPI display.*
 
