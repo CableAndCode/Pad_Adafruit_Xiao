@@ -7,7 +7,11 @@
 
 #include "parameters.h"
 #include "messages.h"
-#include "mac_addresses_private.h"
+#if __has_include("mac_addresses_private.h")
+  #include "mac_addresses_private.h"
+#else
+  #include "mac_addresses.h"
+#endif
 #include "errors.h"
 #include "joystick_read.h"
 #include "DisplayManager.h"
