@@ -72,7 +72,14 @@ used here has no touch layer.
 ---
 
 ### License
-This project is licensed under the **GNU General Public License v3.0**. See the [LICENSE](LICENSE) file for full details.
+Released under the MIT License. See [LICENSE](LICENSE).
+
+Third-party libraries retain their own licenses:
+- [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI) – FreeBSD (BSD 2-clause)
+- [Adafruit seesaw](https://github.com/adafruit/Adafruit_Seesaw) – MIT
+- [Adafruit BusIO](https://github.com/adafruit/Adafruit_BusIO) – MIT
+- [Adafruit ST7735/ST7789](https://github.com/adafruit/Adafruit-ST7735-Library) – BSD
+- ESP32 Arduino Core – Apache 2.0 / LGPL
 
 ---
 
