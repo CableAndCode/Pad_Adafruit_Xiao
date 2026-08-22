@@ -48,54 +48,27 @@ The controller transmits structured control data to:
 ---
 
 ---
-### TFT_eSPI Configuration (User_Setup.h)
+### Build & Flash
 
-For correct operation with the Xiao ESP32-S3 and the 1.8" ST7735 SPI TFT display, make sure your User_Setup.h in the TFT_eSPI library includes the following (or equivalent) definitions:
+Requires [PlatformIO](https://platformio.org/).
 
-#define ST7735_DRIVER
+```bash
+git clone https://github.com/CableAndCode/Pad_Adafruit_Xiao.git
+cd Pad_Adafruit_Xiao
+pio run -t upload
+```
 
-#define TFT_WIDTH 128
+**Display configuration.** No manual editing of the TFT_eSPI library is
+required. All display settings (driver, pins, SPI speed, fonts) are passed
+as `build_flags` in `platformio.ini` and are applied automatically.
 
-#define TFT_HEIGHT 160
+**MAC addresses.** The project builds out of the box using the placeholder
+addresses in `src/mac_addresses.h`. Edit that file with the MAC addresses of
+your own devices, or create `src/mac_addresses_private.h` — if present, it
+takes precedence and is excluded from version control.
 
-#define ST7735_REDTAB
-
-#define TFT_MOSI 9
-
-#define TFT_SCLK 7
-
-#define TFT_CS 2
-
-#define TFT_DC 4
-
-#define TFT_RST 3
-
-#define USE_HSPI_PORT
-
-#define SPI_FREQUENCY 27000000
-
-#define SPI_READ_FREQUENCY 20000000
-
-#define SPI_TOUCH_FREQUENCY 2500000
-
-#define TFT_RGB_ORDER TFT_RGB
-
-#define LOAD_GLCD
-
-#define LOAD_FONT2
-
-#define LOAD_FONT4
-
-#define LOAD_FONT6
-
-#define LOAD_FONT7
-
-#define LOAD_FONT8
-
-#define LOAD_GFXFF
-
-#define SMOOTH_FONT
-
+A warning about `TOUCH_CS` during the build is expected; the ST7735 panel
+used here has no touch layer.
 ---
 
 ### License

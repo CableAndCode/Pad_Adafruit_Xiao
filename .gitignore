@@ -32,7 +32,7 @@ test/
 *.bak
 *.tmp
 
-# TFT_eSPI specific configs (optional if present)
+# TFT_eSPI specific configs (legacy — config now lives in platformio.ini)
 User_Setup.h
 
 # Always track README
