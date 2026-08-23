@@ -8,9 +8,10 @@
 
 
 This custom controller is built on the Xiao ESP32-S3 and communicates via ESP-NOW. It reads two analog joysticks using Adafruit Seesaw modules (I2C) and displays live data on a 1.8" ST7735 TFT screen using the TFT_eSPI library. All key functions run under FreeRTOS, enabling smooth and concurrent execution.
-The controller transmits structured control data to:
-- A mecanum wheel robot platform, and
-- A dedicated debug monitor ESP32 for telemetry and diagnostics.
+The controller sends structured control data to a mecanum wheel robot platform
+([ESP32S3_Mecanum_Base](https://github.com/PiotrSabat/ESP32S3_Mecanum_Base)) and
+doubles as the system's diagnostic display — telemetry coming back from the
+platform is shown on the pad's own screen, so no separate monitor device is needed.
 
 ---
 
@@ -41,7 +42,7 @@ The controller transmits structured control data to:
 ---
 
 ### Libraries Used
-- [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI) – GPLv3
+- [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI) – FreeBSD (BSD 2-clause)
 - [Adafruit seesaw library](https://github.com/adafruit/Adafruit_Seesaw) – MIT
 - ESP32 Arduino Core (including ESP-NOW and WiFi) – Apache 2.0 / LGPL
 
