@@ -23,7 +23,7 @@ void DisplayManager::begin() {
     spriteJoystick_L.createSprite(64, 64);
     spriteJoystick_R.createSprite(64, 64);
     spriteMessages.createSprite(128, 30);
-    spriteStatus.createSprite(128, 30);
+    spriteStatus.createSprite(128, 24);
     spriteButtons_L.createSprite(64, 70);
     spriteButtons_R.createSprite(64, 70);
 
@@ -51,19 +51,15 @@ void DisplayManager::updateJoystick(int lx, int ly, int rx, int ry) {
     }
 }
 
-void DisplayManager::updateStatus(int lx, int ly, int rx, int ry,
-        bool L_Button_A, bool L_Button_B, bool L_Button_X, bool L_Button_Y, bool L_Button_SELECT, bool L_Button_START,
-        bool R_Button_A, bool R_Button_B, bool R_Button_X, bool R_Button_Y, bool R_Button_SELECT, bool R_Button_START) {
-
-    spriteStatus.fillScreen(TFT_BLACK);
-
-    spriteStatus.setCursor(0, 3);
-    spriteStatus.setTextColor(TFT_WHITE);
+// Pas y = 65..88 jest wolny: ramki joysticków kończą się na 63, sprite'y
+// przycisków zaczynają na 90. Nic tu wcześniej nie było rysowane — poprzednia
+// wersja updateStatus() nie była wołana z żadnego miejsca w programie.
+void DisplayManager::updateLinkStatus(const char* text, uint16_t color) {
+    spriteStatus.fillSprite(TFT_BLACK);
+    spriteStatus.setCursor(2, 4);
+    spriteStatus.setTextColor(color);
     spriteStatus.setTextSize(1);
-    spriteStatus.printf("L_X: %4d  R_X: %4d\n", lx, rx);
-    spriteStatus.printf("L_Y: %4d  R_Y: %4d\n", ly, ry);
-
-
+    spriteStatus.print(text);
     spriteStatus.pushSprite(0, 65);
 }
 

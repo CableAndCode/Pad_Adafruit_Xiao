@@ -25,7 +25,88 @@ Adafruit_seesaw ss1, ss2; // I2C-based gamepad controllers
 JoystickReader joystickReaderL(offsetL_X, offsetL_Y, true, true);
 JoystickReader joystickReaderR(offsetR_X, offsetR_Y, false, false);
 
-Message_from_Pad message; // Global message structure from pad
+Msg_PadControl message; // Global message structure from pad
+
+// ---- Stan protokołu (patrz nagłówek messages.h) ----
+static volatile uint8_t  platProtoVersion = 0;      // wersja ogłoszona przez platformę
+static volatile bool     platSeen         = false;  // widziano jakiekolwiek HELLO
+static volatile bool     platProtoOk      = false;  // ...i wersja się zgadza
+static volatile uint32_t platHelloCount   = 0;
+static volatile uint32_t telemetryCount   = 0;
+static volatile uint32_t protoErrorCount  = 0;      // ramki nieznanego typu/długości
+static volatile uint8_t  lastUnknownType  = 0;
+static volatile int      lastUnknownLen   = 0;
+
+// Przepakowanie przycisków z rzadkiej numeracji pinów seesaw (0,1,2,5,6,16)
+// na gęste bity protokołu. Przy okazji normalizacja: seesaw daje stan NISKI
+// przy wciśnięciu, w eter idzie 1 = WCIŚNIĘTY, żeby odbiorca nie musiał
+// wiedzieć nic o pull-upach.
+static uint16_t packButtons(uint32_t rawL, uint32_t rawR) {
+    uint16_t b = 0;
+    if (!(rawL & (1UL << BUTTON_A)))      b |= BTN_L_A;
+    if (!(rawL & (1UL << BUTTON_B)))      b |= BTN_L_B;
+    if (!(rawL & (1UL << BUTTON_X)))      b |= BTN_L_X;
+    if (!(rawL & (1UL << BUTTON_Y)))      b |= BTN_L_Y;
+    if (!(rawL & (1UL << BUTTON_SELECT))) b |= BTN_L_SELECT;
+    if (!(rawL & (1UL << BUTTON_START)))  b |= BTN_L_START;
+    if (!(rawR & (1UL << BUTTON_A)))      b |= BTN_R_A;
+    if (!(rawR & (1UL << BUTTON_B)))      b |= BTN_R_B;
+    if (!(rawR & (1UL << BUTTON_X)))      b |= BTN_R_X;
+    if (!(rawR & (1UL << BUTTON_Y)))      b |= BTN_R_Y;
+    if (!(rawR & (1UL << BUTTON_SELECT))) b |= BTN_R_SELECT;
+    if (!(rawR & (1UL << BUTTON_START)))  b |= BTN_R_START;
+    return b;
+}
+
+// Callback odbioru — Pad po raz pierwszy CZEGOKOLWIEK słucha. Rozpoznanie po
+// pierwszym bajcie, długość jako walidacja (patrz nagłówek messages.h).
+void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+    if (len < 1) return;
+    const uint8_t type = incomingData[0];
+
+    switch (type) {
+    case MSG_HELLO: {
+        if (len != (int)sizeof(Msg_Hello)) break;
+        Msg_Hello hello;
+        memcpy(&hello, incomingData, sizeof(hello));
+        if (hello.role != ROLE_PLATFORM) break;
+        platProtoVersion = hello.protoVersion;
+        platSeen         = true;
+        platProtoOk      = (hello.protoVersion == PROTO_VERSION);
+        platHelloCount++;
+        return;
+    }
+
+    case MSG_TELEMETRY:
+        if (len != (int)sizeof(Msg_Telemetry)) break;
+        // Krok A tylko liczy ramki — wyświetlanie telemetrii to osobny krok.
+        telemetryCount++;
+        return;
+
+    default:
+        break;
+    }
+
+    protoErrorCount++;
+    lastUnknownType = type;
+    lastUnknownLen  = len;
+}
+
+// Ogłaszanie wersji protokołu — powtarzane, bo ESP-NOW nie zna sesji
+// i platforma może się zresetować w dowolnej chwili.
+void TaskHello(void *pvParameters) {
+    (void)pvParameters;
+    while (1) {
+        Msg_Hello hello = {};
+        hello.msgType      = MSG_HELLO;
+        hello.protoVersion = PROTO_VERSION;
+        hello.role         = ROLE_PAD;
+        hello.fwBuildId    = FW_BUILD_ID;
+        hello.uptimeMs     = millis();
+        esp_now_send(macPlatformMecanum, (uint8_t *)&hello, sizeof(hello));
+        vTaskDelay(pdMS_TO_TICKS(platProtoOk ? 5000 : 1000));
+    }
+}
 
 // --- Callback: Confirm delivery status of sent ESP-NOW messages ---
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
@@ -74,22 +155,21 @@ void TaskGamepads(void *pvParameters) {
         int localL_Joystick_buttons_message = ss1.digitalReadBulk(button_mask);
         int localR_Joystick_buttons_message = ss2.digitalReadBulk(button_mask2);
 
-        // Critical section: update global message structure
+        // Critical section: update global message structure.
+        // Wartości surowe nie trafiają już w eter — kalibracja odbywa się tutaj,
+        // a platforma nigdy ich nie czytała.
         xSemaphoreTake(messageMutex, portMAX_DELAY);
+        message.msgType   = MSG_PAD_CONTROL;
+        message.mode      = 0;
         message.timeStamp = localTimeStamp;
 
-        message.L_Joystick_raw_x = localL_Joystick_raw_x;
-        message.L_Joystick_raw_y = localL_Joystick_raw_y;
-        message.R_Joystick_raw_x = localR_Joystick_raw_x;
-        message.R_Joystick_raw_y = localR_Joystick_raw_y;
+        message.axisLX = localL_Joystick_x;
+        message.axisLY = localL_Joystick_y;
+        message.axisRX = localR_Joystick_x;
+        message.axisRY = localR_Joystick_y;
 
-        message.L_Joystick_x_message = localL_Joystick_x;
-        message.L_Joystick_y_message = localL_Joystick_y;
-        message.R_Joystick_x_message = localR_Joystick_x;
-        message.R_Joystick_y_message = localR_Joystick_y;
-
-        message.L_Joystick_buttons_message = localL_Joystick_buttons_message;
-        message.R_Joystick_buttons_message = localR_Joystick_buttons_message;
+        message.buttons = packButtons((uint32_t)localL_Joystick_buttons_message,
+                                      (uint32_t)localR_Joystick_buttons_message);
         xSemaphoreGive(messageMutex);
 
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
@@ -102,21 +182,21 @@ void TaskESPNow(void *pvParameters) {
     (void)pvParameters;
     const TickType_t xFrequency = pdMS_TO_TICKS(50); // 20 Hz
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    Message_from_Pad localMsg;
+    Msg_PadControl localMsg;
 
     while (1) {
         // Copy shared data (protected by mutex)
         xSemaphoreTake(messageMutex, portMAX_DELAY);
         totalMessages++;
-        message.messageSequenceNumber = totalMessages;
-        memcpy(&localMsg, &message, sizeof(Message_from_Pad));
+        message.seq = totalMessages;
+        memcpy(&localMsg, &message, sizeof(Msg_PadControl));
         xSemaphoreGive(messageMutex);
 
-        // Send to debug monitor
-        esp_now_send(macMonitorDebug, (uint8_t *)&localMsg, sizeof(Message_from_Pad));
+        // Send to debug monitor (adresat do usunięcia w kroku sprzątania)
+        esp_now_send(macMonitorDebug, (uint8_t *)&localMsg, sizeof(Msg_PadControl));
 
         // Send to mecanum platform
-        esp_now_send(macPlatformMecanum, (uint8_t *)&localMsg, sizeof(Message_from_Pad));
+        esp_now_send(macPlatformMecanum, (uint8_t *)&localMsg, sizeof(Msg_PadControl));
 
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
@@ -135,25 +215,51 @@ void TaskTFTScreen(void *pvParameters) {
 
         // Read current values from shared message (protected)
         xSemaphoreTake(messageMutex, portMAX_DELAY);
-        int lx = message.L_Joystick_x_message;
-        int ly = message.L_Joystick_y_message;
-        int rx = message.R_Joystick_x_message;
-        int ry = message.R_Joystick_y_message;
+        int lx = message.axisLX;
+        int ly = message.axisLY;
+        int rx = message.axisRX;
+        int ry = message.axisRY;
 
-        bool L_Button_A = !(message.L_Joystick_buttons_message & (1UL << BUTTON_A));
-        bool L_Button_B = !(message.L_Joystick_buttons_message & (1UL << BUTTON_B));
-        bool L_Button_X = !(message.L_Joystick_buttons_message & (1UL << BUTTON_X));
-        bool L_Button_Y = !(message.L_Joystick_buttons_message & (1UL << BUTTON_Y));
-        bool L_Button_SELECT = !(message.L_Joystick_buttons_message & (1UL << BUTTON_SELECT));
-        bool L_Button_START = !(message.L_Joystick_buttons_message & (1UL << BUTTON_START));
-
-        bool R_Button_A = !(message.R_Joystick_buttons_message & (1UL << BUTTON_A));
-        bool R_Button_B = !(message.R_Joystick_buttons_message & (1UL << BUTTON_B));
-        bool R_Button_X = !(message.R_Joystick_buttons_message & (1UL << BUTTON_X));
-        bool R_Button_Y = !(message.R_Joystick_buttons_message & (1UL << BUTTON_Y));
-        bool R_Button_SELECT = !(message.R_Joystick_buttons_message & (1UL << BUTTON_SELECT));
-        bool R_Button_START = !(message.R_Joystick_buttons_message & (1UL << BUTTON_START));
+        // Bity są już znormalizowane w packButtons(): 1 = wciśnięty.
+        uint16_t btn = message.buttons;
         xSemaphoreGive(messageMutex);
+
+        bool L_Button_A      = btn & BTN_L_A;
+        bool L_Button_B      = btn & BTN_L_B;
+        bool L_Button_X      = btn & BTN_L_X;
+        bool L_Button_Y      = btn & BTN_L_Y;
+        bool L_Button_SELECT = btn & BTN_L_SELECT;
+        bool L_Button_START  = btn & BTN_L_START;
+
+        bool R_Button_A      = btn & BTN_R_A;
+        bool R_Button_B      = btn & BTN_R_B;
+        bool R_Button_X      = btn & BTN_R_X;
+        bool R_Button_Y      = btn & BTN_R_Y;
+        bool R_Button_SELECT = btn & BTN_R_SELECT;
+        bool R_Button_START  = btn & BTN_R_START;
+
+        // Linia stanu łącza w wolnym pasie nad przyciskami. Kolejność ma
+        // znaczenie tylko o tyle, że sprite'y przycisków są wypychane później
+        // i wygrywają w razie nachodzenia.
+        char linkText[24];
+        uint16_t linkColor;
+        if (protoErrorCount > 0) {
+            snprintf(linkText, sizeof(linkText), "?TYP %u  LEN %d",
+                     (unsigned)lastUnknownType, lastUnknownLen);
+            linkColor = TFT_RED;
+        } else if (!platSeen) {
+            snprintf(linkText, sizeof(linkText), "PLAT --  szukam");
+            linkColor = TFT_YELLOW;
+        } else if (!platProtoOk) {
+            snprintf(linkText, sizeof(linkText), "PLAT v%u  ZLA WERSJA",
+                     (unsigned)platProtoVersion);
+            linkColor = TFT_RED;
+        } else {
+            snprintf(linkText, sizeof(linkText), "PLAT v%u  OK",
+                     (unsigned)platProtoVersion);
+            linkColor = TFT_GREEN;
+        }
+        display.updateLinkStatus(linkText, linkColor);
 
         // Update display with latest joystick positions and button states
         display.updateJoystick(lx, ly, rx, ry);
@@ -201,6 +307,7 @@ void setup() {
         return;
     }
     esp_now_register_send_cb(OnDataSent);
+    esp_now_register_recv_cb(OnDataRecv);
 
     // Add debug monitor peer
     memcpy(peerInfo.peer_addr, macMonitorDebug, 6);
@@ -230,6 +337,7 @@ void setup() {
     xTaskCreate(TaskGamepads, "Gamepads", 2048, NULL, 1, NULL);
     xTaskCreate(TaskESPNow, "ESPNowSend", 2048, NULL, 1, NULL);
     xTaskCreate(TaskTFTScreen, "TFTScreen", 4096, NULL, 1, NULL);
+    xTaskCreate(TaskHello,     "Hello",      2048, NULL, 1, NULL);
 }
 
 // --- Main loop ---

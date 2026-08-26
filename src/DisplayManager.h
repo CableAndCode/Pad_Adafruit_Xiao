@@ -23,11 +23,10 @@ public:
     DisplayManager();
     void begin();
     void updateJoystick(int lx, int ly, int rx, int ry);
-    void updateStatus(int lx, int ly, int rx, int ry,
-                      bool L_Button_A, bool L_Button_B, bool L_Button_X, bool L_Button_Y,
-                      bool L_Button_SELECT, bool L_Button_START,
-                      bool R_Button_A, bool R_Button_B, bool R_Button_X, bool R_Button_Y,
-                      bool R_Button_SELECT, bool R_Button_START);
+
+    /// Jedna linia stanu łącza w wolnym pasie między ramkami joysticków
+    /// a przyciskami. Nie dotyka żadnego innego sprite'a.
+    void updateLinkStatus(const char* text, uint16_t color);
     void showMessage(const char* message);
     void updateButtonsL(bool L_Button_A, bool L_Button_B, bool L_Button_X,
                         bool L_Button_Y, bool L_Button_SELECT, bool L_Button_START);
