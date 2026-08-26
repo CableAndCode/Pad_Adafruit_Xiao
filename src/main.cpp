@@ -32,6 +32,19 @@ static volatile uint8_t  platProtoVersion = 0;      // wersja ogłoszona przez p
 static volatile bool     platSeen         = false;  // widziano jakiekolwiek HELLO
 static volatile bool     platProtoOk      = false;  // ...i wersja się zgadza
 static volatile uint32_t platHelloCount   = 0;
+static volatile uint32_t lastPlatHelloMs  = 0;  // millis() ostatniego HELLO
+static volatile uint32_t handshakeAtMs    = 0;  // moment pierwszej zgodnej wersji
+
+// Napis z wersją jest KOMUNIKATEM STARTOWYM, nie stałym elementem — po
+// kilku sekundach znika i zwalnia pas na siłę sygnału oraz ostrzeżenia.
+// Informacja „wersje się zgadzają" jest potrzebna raz; to, co ma tam być
+// na stałe, zmienia się w trakcie jazdy.
+constexpr uint32_t LINK_BANNER_MS = 4000;
+
+// Cisza dłuższa niż to = platforma zgubiona. Próg jest wysoki, bo dziś
+// jedynym sygnałem od platformy są HELLO co 5 s. Gdy telemetria zacznie
+// docierać do Pada (20 Hz), wykrywanie zejdzie do ułamka sekundy.
+constexpr uint32_t PLAT_HELLO_TIMEOUT_MS = 15000;
 static volatile uint32_t telemetryCount   = 0;
 static volatile uint32_t protoErrorCount  = 0;      // ramki nieznanego typu/długości
 static volatile uint8_t  lastUnknownType  = 0;
@@ -74,6 +87,8 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
         platSeen         = true;
         platProtoOk      = (hello.protoVersion == PROTO_VERSION);
         platHelloCount++;
+        lastPlatHelloMs  = millis();
+        if (platProtoOk && handshakeAtMs == 0) handshakeAtMs = millis();
         return;
     }
 
@@ -238,11 +253,13 @@ void TaskTFTScreen(void *pvParameters) {
         bool R_Button_SELECT = btn & BTN_R_SELECT;
         bool R_Button_START  = btn & BTN_R_START;
 
-        // Linia stanu łącza w wolnym pasie nad przyciskami. Kolejność ma
-        // znaczenie tylko o tyle, że sprite'y przycisków są wypychane później
-        // i wygrywają w razie nachodzenia.
+        // Pas stanu w wolnym miejscu nad przyciskami. Ostrzeżenia mają
+        // pierwszeństwo; komunikat o zgodnej wersji gaśnie po LINK_BANNER_MS
+        // i zostawia pas pusty na to, co przyjdzie później.
         char linkText[24];
-        uint16_t linkColor;
+        uint16_t linkColor = TFT_GREEN;
+        uint32_t nowMs = millis();
+
         if (protoErrorCount > 0) {
             snprintf(linkText, sizeof(linkText), "?TYP %u  LEN %d",
                      (unsigned)lastUnknownType, lastUnknownLen);
@@ -254,12 +271,26 @@ void TaskTFTScreen(void *pvParameters) {
             snprintf(linkText, sizeof(linkText), "PLAT v%u  ZLA WERSJA",
                      (unsigned)platProtoVersion);
             linkColor = TFT_RED;
-        } else {
+        } else if ((nowMs - lastPlatHelloMs) > PLAT_HELLO_TIMEOUT_MS) {
+            snprintf(linkText, sizeof(linkText), "PLAT ZGUBIONA");
+            linkColor = TFT_RED;
+        } else if ((nowMs - handshakeAtMs) < LINK_BANNER_MS) {
             snprintf(linkText, sizeof(linkText), "PLAT v%u  OK",
                      (unsigned)platProtoVersion);
             linkColor = TFT_GREEN;
+        } else {
+            linkText[0] = '\0';   // pas pusty — miejsce zwolnione
         }
-        display.updateLinkStatus(linkText, linkColor);
+
+        // Przerysowujemy tylko przy zmianie. Bez tego pas szedłby po SPI
+        // 20 razy na sekundę bez powodu, konkurując z resztą ekranu.
+        static char     lastText[24] = { 1 };
+        static uint16_t lastColor    = 0;
+        if (strcmp(linkText, lastText) != 0 || linkColor != lastColor) {
+            display.updateLinkStatus(linkText, linkColor);
+            strncpy(lastText, linkText, sizeof(lastText));
+            lastColor = linkColor;
+        }
 
         // Update display with latest joystick positions and button states
         display.updateJoystick(lx, ly, rx, ry);

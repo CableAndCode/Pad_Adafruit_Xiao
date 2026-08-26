@@ -114,6 +114,20 @@ typedef struct __attribute__((packed)) {
     uint32_t timestamp;               // millis() platformy
     uint32_t seq;                     // numer kolejny ramki telemetrii
 
+    // --- Echo ostatniej ramki sterującej ---
+    // Osie odsyłane DOKŁADNIE tak, jak przyszły: przed martwą strefą,
+    // skalowaniem i normalizacją. To nie jest redundancja — to jedyny
+    // dowód, że platforma czyta TE pola, co trzeba. Zgodna wersja
+    // protokołu tego nie gwarantuje: przesunięcie o dwa bajty daje
+    // zielone „OK" i robota jadącego bokiem zamiast do przodu.
+    //
+    // Pad rysuje z tego kropkę w pierścieniu drążka: jest w środku =
+    // łącze żyje i nadąża, wlecze się = opóźnienie, skacze = straty.
+    // Jeden piksel zamiast trzech liczb do czytania w trakcie jazdy.
+    int16_t  echoAxisLX, echoAxisLY;
+    int16_t  echoAxisRX, echoAxisRY;
+    uint32_t echoSeq;                 // seq echowanej ramki — daje RTT w ms
+
     int16_t  targetRPM[4];            // FL, FR, RL, RR — 0,1 RPM
     int16_t  measuredRPM[4];          // 0,1 RPM
     int16_t  pwm[4];                  // wyjście regulatora, jednostki PWM
@@ -133,7 +147,7 @@ typedef struct __attribute__((packed)) {
     uint8_t  padLossPermille;         // ile ramek z Pada zgubione, ‰
     uint16_t motorCtrlTimeUs;         // czas motorControlTask, µs
 } Msg_Telemetry;
-static_assert(sizeof(Msg_Telemetry) == 76, "Msg_Telemetry: rozjazd z drugim repo!");
+static_assert(sizeof(Msg_Telemetry) == 88, "Msg_Telemetry: rozjazd z drugim repo!");
 
 // ---------------------------------------------------------------------
 //  MSG_SET_PID — zdalna zmiana nastaw. Dziedzictwo po porzuconym
