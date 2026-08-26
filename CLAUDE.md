@@ -40,6 +40,23 @@ leci ona w każdej ramce. Platforma **nie ruszy**, dopóki nie zobaczy od Pada
 HELLO ze zgodną wersją, więc rozjazd wersji objawia się staniem w miejscu
 i czerwonym napisem na wyświetlaczu, a nie zgadywaniem.
 
+## Pas stanu na wyświetlaczu (y = 65..88)
+
+Ten pas jest wolny: ramki joysticków kończą się na y=63, sprite'y przycisków
+zaczynają na y=90. Napis z wersją protokołu jest tam **komunikatem startowym**,
+nie stałym elementem — gaśnie kilka sekund po handshake'u. Docelowo pas należy
+do siły sygnału i ostrzeżeń, bo informacja „wersje się zgadzają" jest potrzebna
+raz, a to, co się zmienia w trakcie jazdy, potrzebuje miejsca na stałe.
+
+Uwaga na nachodzenie sprite'ów: `spriteMessages` (y=96, wys. 30) i sprite'y
+przycisków (y=90, wys. 70) **zachodzą na siebie** — wygrywa wypychany później.
+Sprite statusu ma dlatego 24 piksele, nie 30.
+
+Docelowa forma sprzężenia zwrotnego z platformy jest graficzna, nie tekstowa:
+kropka odesłanych osi w pierścieniu drążka, a w przyszłości wektor kierunku
+i przyspieszenia — zadany z drążka i odesłany z platformy, obok siebie. Przy
+mecanum ma to sens szczególny, bo jazda bokiem jest pełnoprawnym kierunkiem.
+
 ## Nazewnictwo adresów MAC
 
 Szablon `src/mac_addresses.h` w tym repo nazywa adres Pada `macModulXiao`,
