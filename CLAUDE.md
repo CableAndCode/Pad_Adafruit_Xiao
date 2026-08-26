@@ -8,7 +8,9 @@ widać z samego kodu: trwałe niezmienniki i decyzje architektoniczne. Świadomi
 ## Architektura systemu
 
 System składa się z **dwóch** urządzeń: tego Pada i platformy mecanum
-(repo `ESP32S3_Mecanum_Base`).
+(repo `ESP32S3_Mecanum_Base`, katalog lokalny
+`~/Documents/PlatformIO/Projects/Platforma_czterokolowa_esp32` — nazwa katalogu
+nie odpowiada nazwie repo).
 
 Osobny moduł „debug monitor" i aplikacja na iPhone zostały **porzucone**
 (decyzja z 2026-08-23), żeby szybciej dowieźć działającą całość. **Pad przejmuje
@@ -17,21 +19,26 @@ pokazuje nie tylko własny stan, ale też telemetrię odebraną z platformy.
 
 Konsekwencje dla tego repo:
 
-- Pad obecnie **tylko nadaje**. Nie ma `esp_now_register_recv_cb`, więc odbiór
-  telemetrii z platformy trzeba dopiero dodać.
+- Pad odbiera już `MSG_HELLO` i **liczy** przychodzące ramki telemetrii, ale
+  jeszcze ich nie wyświetla — od tego jest `DisplayManager` i osobny krok.
 - `macMonitorDebug`, wysyłka do monitora w `TaskESPNow` oraz liczniki
   `ESP_NOW_Monitor_*` w `errors.h` są przeznaczone do usunięcia, nie do rozwijania.
 
 ## Niezmiennik: `src/messages.h` musi być identyczny z kopią w repo platformy
 
-Odbiorca rozpoznaje typ wiadomości **wyłącznie** po `len == sizeof(struct)`.
-Rozjazd struktur między repo nie da błędu kompilacji — da ciche gubienie
-pakietów, a przy przypadkowej zgodności rozmiarów interpretację danych jako
-niewłaściwej struktury. Każda zmiana struktury to zmiana w **obu** repo w tym
-samym kroku.
+Plik definiuje protokół ESP-NOW i **oba repo muszą mieć go bajt w bajt takiego
+samego**. Każda zmiana struktury to zmiana w obu repo w tym samym kroku.
 
-Stan na dziś: `Message_from_Monitor` (zdalna zmiana nastaw PID) istnieje tylko po
-stronie platformy. Jeśli Pad ma wysyłać nastawy, struktura musi trafić także tutaj.
+Typ wiadomości rozpoznaje **pierwszy bajt** (`msgType`), długość służy tylko do
+walidacji przed `memcpy`. Wcześniej rozpoznawano po samym `sizeof`, co przy
+przypadkowej zgodności rozmiarów dawało ciche czytanie danych jako niewłaściwej
+struktury. `static_assert` na rozmiarach zamienia przypadkową edycję w jednym
+repo w błąd kompilacji.
+
+Wersję protokołu niosą `MSG_HELLO` nadawane okresowo przez obie strony — nie
+leci ona w każdej ramce. Platforma **nie ruszy**, dopóki nie zobaczy od Pada
+HELLO ze zgodną wersją, więc rozjazd wersji objawia się staniem w miejscu
+i czerwonym napisem na wyświetlaczu, a nie zgadywaniem.
 
 ## Nazewnictwo adresów MAC
 
