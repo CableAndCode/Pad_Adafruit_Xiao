@@ -161,13 +161,39 @@ void TaskHello(void *pvParameters) {
 }
 
 // --- Callback: Confirm delivery status of sent ESP-NOW messages ---
+// Okno ostatnich ACK_WINDOW wysyłek. Suma od uruchomienia tylko rośnie i nic
+// nie mówi — liczy się udział strat TERAZ, bo to on odzwierciedla zasięg.
+constexpr int ACK_WINDOW = 100;
+static volatile uint8_t  ackFail[ACK_WINDOW] = { 0 };
+static volatile int      ackIndex = 0;
+static volatile int      ackFailCount = 0;      // ile jedynek jest w oknie
+static volatile int      ackStreak = 0;         // ile strat POD RZĄD
+
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-    if (memcmp(mac_addr, macPlatformMecanum, 6) == 0) {
-        ESP_NOW_Platform_Error = (status != ESP_NOW_SEND_SUCCESS);
-        if (ESP_NOW_Platform_Error) {
-            ESP_NOW_Platform_Send_Error_Counter++;
-        }
-    }
+    if (memcmp(mac_addr, macPlatformMecanum, 6) != 0) return;
+
+    const bool failed = (status != ESP_NOW_SEND_SUCCESS);
+    ESP_NOW_Platform_Error = failed;
+    if (failed) ESP_NOW_Platform_Send_Error_Counter++;
+
+    ackFailCount -= ackFail[ackIndex];
+    ackFail[ackIndex] = failed ? 1 : 0;
+    ackFailCount += ackFail[ackIndex];
+    ackIndex = (ackIndex + 1) % ACK_WINDOW;
+
+    ackStreak = failed ? (ackStreak + 1) : 0;
+}
+
+// Udział strat przełożony na „zasięg". Odwzorowanie jest CELOWO nieliniowe:
+// przy krawędzi zasięgu straty wystrzeliwują, więc kilka procent zgubionych
+// pakietów oznacza, że zapasu prawie nie ma. Punkty: 0% strat = 100 zasięgu,
+// 5% = 50, 10% = 20, 20% i więcej = 0.
+static unsigned rangeFromLoss(unsigned lossPercent) {
+    if (lossPercent == 0)  return 100;
+    if (lossPercent <= 5)  return 100 - (lossPercent * 50) / 5;
+    if (lossPercent <= 10) return 50  - ((lossPercent - 5) * 30) / 5;
+    if (lossPercent <= 20) return 20  - ((lossPercent - 10) * 20) / 10;
+    return 0;
 }
 
 
@@ -262,7 +288,7 @@ static unsigned telemLossPermille = 0;
 
 // Pas stanu: ostrzeżenia mają pierwszeństwo, a gdy wszystko gra, pokazuje to,
 // co zmienia się w trakcie jazdy — drogę w obie strony i stratę ramek.
-static void drawLinkStatusLine(uint32_t rttMs) {
+static void drawLinkStatusLine(uint32_t rttMs, int y) {
     char text[24];
     uint16_t color = TFT_GREEN;
     uint32_t nowMs = millis();
@@ -307,10 +333,12 @@ static void drawLinkStatusLine(uint32_t rttMs) {
 
     static char lastText[24] = { 1 };
     static uint16_t lastColor = 0;
-    if (strcmp(text, lastText) != 0 || color != lastColor) {
-        display.updateLinkStatus(text, color);
+    static int lastY = -1;
+    if (strcmp(text, lastText) != 0 || color != lastColor || y != lastY) {
+        display.updateLinkStatus(text, color, y);
         strncpy(lastText, text, sizeof(lastText));
         lastColor = color;
+        lastY = y;
     }
 }
 
@@ -401,31 +429,34 @@ void TaskTFTScreen(void *pvParameters) {
         if (L[4] && !prevSelL) {
             currentScreen = (currentScreen + 1) % SCR_COUNT;
             display.invalidate();
-            display.clearLower();
+            display.clearAll();
         }
         if (R[4] && !prevSelR) {
             currentScreen = (currentScreen + SCR_COUNT - 1) % SCR_COUNT;
             display.invalidate();
-            display.clearLower();
+            display.clearAll();
         }
         prevSelL = L[4];
         prevSelR = R[4];
 
-        // --- górna część ekranu: wspólna dla wszystkich widoków ---
-        display.updateJoystick(lx, ly, rx, ry, echoValid,
-                               tel.echoAxisLX, tel.echoAxisLY,
-                               tel.echoAxisRX, tel.echoAxisRY);
-        drawLinkStatusLine(rtt);
+        // Ekran jazdy ma własny układ: pas stanu na górze, radar na całą resztę.
+        // Pierścienie drążków są tam zbędne — radar dowodzi tego samego i więcej.
+        const bool radarLayout = (currentScreen == SCR_DRIVE);
+        drawLinkStatusLine(rtt, radarLayout ? 0 : 65);
+        if (!radarLayout) {
+            display.updateJoystick(lx, ly, rx, ry, echoValid,
+                                   tel.echoAxisLX, tel.echoAxisLY,
+                                   tel.echoAxisRX, tel.echoAxisRY);
+        }
 
-        // --- panel dolny zależny od wybranego ekranu ---
         switch (currentScreen) {
         case SCR_DRIVE: {
-            // Wektor zadany i rzeczywisty, odtworzone z obrotów czterech kół.
+            // Wektory odtworzone z obrotów czterech kół.
             MecanumMotion t = mecanumInverse(tel.targetRPM[0], tel.targetRPM[1],
                                              tel.targetRPM[2], tel.targetRPM[3]);
             MecanumMotion m = mecanumInverse(tel.measuredRPM[0], tel.measuredRPM[1],
                                              tel.measuredRPM[2], tel.measuredRPM[3]);
-            display.panelMotion(t.vx, t.vy, t.omega, m.vx, m.vy, m.omega, echoValid);
+            display.panelRadar(t.vx, t.vy, t.omega, m.vx, m.vy, m.omega, echoValid);
             break;
         }
         case SCR_WHEELS: {
@@ -438,10 +469,12 @@ void TaskTFTScreen(void *pvParameters) {
             display.panelWheels(rows);
             break;
         }
-        case SCR_LINK:
-            display.panelLink(rtt, telemLossPermille, tel.seq,
-                              ESP_NOW_Platform_Send_Error_Counter, protoErrorCount);
+        case SCR_LINK: {
+            unsigned ackLoss = (unsigned)ackFailCount * 100u / ACK_WINDOW;
+            display.panelLink(rangeFromLoss(ackLoss), ackLoss,
+                              telemLossPermille, protoErrorCount);
             break;
+        }
         case SCR_BUTTONS:
             display.panelButtons(L, R);
             break;

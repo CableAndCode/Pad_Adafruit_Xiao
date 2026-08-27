@@ -50,10 +50,18 @@ nie stałym elementem — gaśnie kilka sekund po handshake'u. Docelowo pas nale
 do siły sygnału i ostrzeżeń, bo informacja „wersje się zgadzają" jest potrzebna
 raz, a to, co się zmienia w trakcie jazdy, potrzebuje miejsca na stałe.
 
-Ekran dzieli się na trzy stałe strefy: pierścienie drążków (y 0..63), pas
-stanu (y 65..88) i **panel dolny** (y 90..159). Panel dolny to jeden sprite
-współdzielony przez wszystkie widoki — każdy kolejny ekran rysuje w tym samym
-buforze. Osobne sprite'y na ekran kosztowałyby po ~18 kB każdy.
+Ekran ma **dwa układy**. Zwykły: pierścienie drążków (y 0..63), pas stanu
+(y 65..88) i panel dolny (y 90..159). Radarowy (ekran jazdy): pas stanu na górze
+(y 0..23) i radar na całą resztę (y 24..159). Zmiana ekranu czyści cały ekran,
+bo układy zajmują różne obszary.
+
+Na radarze pierścienie drążków są **celowo pominięte**. Kropka echa dowodziła,
+że platforma czyta właściwe pola; radar dowodzi więcej, bo rysuje się z obrotów
+kół, czyli potwierdza także kinematykę i regulator.
+
+Panele dolne dzielą jeden sprite, radar ma własny — osobny sprite na każdy ekran
+kosztowałby po kilkanaście kB. `createSprite()` przy braku pamięci zwraca
+`nullptr` i **cicho przestaje rysować**, dlatego `begin()` sprawdza wynik.
 
 Wybór ekranu jest **lokalny dla Pada** — nie zajmuje ani jednego bitu w eterze,
 bo platformy nie obchodzi, na co patrzy operator. SELECT lewego pada przewija

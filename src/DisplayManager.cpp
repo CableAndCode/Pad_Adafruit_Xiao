@@ -5,7 +5,7 @@
 DisplayManager::DisplayManager()
     : tft(),
       spriteJoystick_L(&tft), spriteJoystick_R(&tft),
-      spriteStatus(&tft), spriteLower(&tft),
+      spriteStatus(&tft), spriteLower(&tft), spriteRadar(&tft),
       lastLx(-1), lastLy(-1), lastRx(-1), lastRy(-1),
       lastElx(-1), lastEly(-1), lastErx(-1), lastEry(-1), lastEchoValid(false),
       lastPanelId(0xFF) {
@@ -17,23 +17,31 @@ void DisplayManager::begin() {
     tft.setRotation(0);
     tft.fillScreen(TFT_BLACK);
 
-    spriteJoystick_L.createSprite(64, 64);
-    spriteJoystick_R.createSprite(64, 64);
-    spriteStatus.createSprite(128, 24);
-    spriteLower.createSprite(LOWER_W, LOWER_H);
+    // createSprite przy braku pamięci zwraca nullptr i NIE zgłasza błędu —
+    // sprite po prostu przestaje cokolwiek rysować. Bez tej kontroli byłaby to
+    // paskudna usterka do znalezienia: pusty prostokąt i żadnego śladu w logu.
+    void* buffers[5] = {
+        spriteJoystick_L.createSprite(64, 64),
+        spriteJoystick_R.createSprite(64, 64),
+        spriteStatus.createSprite(128, 24),
+        spriteLower.createSprite(LOWER_W, LOWER_H),
+        spriteRadar.createSprite(RADAR_W, RADAR_H)
+    };
+    for (int i = 0; i < 5; i++) {
+        if (buffers[i] == nullptr) {
+            Serial.printf("Brak pamieci na sprite %d!\n", i);
+        }
+    }
 
     spriteJoystick_L.fillScreen(TFT_BLACK);
     spriteJoystick_R.fillScreen(TFT_BLACK);
     spriteStatus.fillScreen(TFT_BLACK);
     spriteLower.fillScreen(TFT_BLACK);
+    spriteRadar.fillScreen(TFT_BLACK);
 }
 
 void DisplayManager::clearAll() {
     tft.fillScreen(TFT_BLACK);
-}
-
-void DisplayManager::clearLower() {
-    tft.fillRect(0, LOWER_Y, LOWER_W, LOWER_H, TFT_BLACK);
 }
 
 void DisplayManager::invalidate() {
@@ -118,13 +126,13 @@ void DisplayManager::updateJoystick(int lx, int ly, int rx, int ry,
 
 // Pas y = 65..88 jest wolny: pierścienie kończą się na 63, panel dolny
 // zaczyna na 90.
-void DisplayManager::updateLinkStatus(const char* text, uint16_t color) {
+void DisplayManager::updateLinkStatus(const char* text, uint16_t color, int y) {
     spriteStatus.fillSprite(TFT_BLACK);
     spriteStatus.setCursor(2, 4);
     spriteStatus.setTextColor(color);
     spriteStatus.setTextSize(1);
     spriteStatus.print(text);
-    spriteStatus.pushSprite(0, 65);
+    spriteStatus.pushSprite(0, y);
 }
 
 // --- Ekran przycisków: dokładnie to samo rozmieszczenie co wcześniej, tylko
@@ -151,62 +159,75 @@ void DisplayManager::panelButtons(const bool L[6], const bool R[6]) {
     spriteLower.pushSprite(0, LOWER_Y);
 }
 
-void DisplayManager::drawVector(int cx, int cy, int r, float vx, float vy,
-                                uint16_t color) {
+void DisplayManager::drawVector(TFT_eSprite& sp, int cx, int cy, int r,
+                                float vx, float vy, uint16_t color) {
     // vy = do przodu = w górę ekranu (oś Y ekranu rośnie w dół).
     int ex = cx + (int)lroundf(vx * r);
     int ey = cy - (int)lroundf(vy * r);
-    spriteLower.drawLine(cx, cy, ex, ey, color);
-    spriteLower.fillCircle(ex, ey, 2, color);
+    sp.drawLine(cx, cy, ex, ey, color);
+    sp.fillCircle(ex, ey, 2, color);
 }
 
-// Ekran jazdy: wektor zadany (cyjan) i rzeczywisty (biały), odtworzone
-// z obrotów czterech kół przez odwrócenie mieszania mecanum.
-void DisplayManager::panelMotion(float tvx, float tvy, float tw,
-                                 float mvx, float mvy, float mw, bool valid) {
+// Obrót jako łuk wzdłuż obręczy: start od godziny 12, długość proporcjonalna
+// do prędkości obrotu, kierunek zgodny ze znakiem. Łuk NIE potrzebuje jednostki
+// — jest z natury względny, więc nie musimy udawać, że znamy stopnie na sekundę
+// (do tego brakuje rozstawu kół). Rysowany punkt po punkcie, bez polegania na
+// drawArc, którego nie ma w każdej wersji TFT_eSPI.
+void DisplayManager::drawSpinArc(TFT_eSprite& sp, int cx, int cy, int r,
+                                 float frac, uint16_t color) {
+    if (frac > 1.0f)  frac = 1.0f;
+    if (frac < -1.0f) frac = -1.0f;
+    const float sweep = frac * 300.0f;                 // maksymalnie 300 stopni
+    if (fabsf(sweep) < 2.0f) return;
+
+    const int steps = (int)fabsf(sweep);
+    for (int i = 0; i <= steps; i++) {
+        float a = (sweep >= 0 ? i : -i) - 90.0f;        // 0 stopni = godzina 12
+        float rad = a * 3.14159265f / 180.0f;
+        int x = cx + (int)lroundf(cosf(rad) * r);
+        int y = cy + (int)lroundf(sinf(rad) * r);
+        sp.drawPixel(x, y, color);
+        sp.drawPixel(x + 1, y, color);
+    }
+}
+
+// Radar: pełny ekran, wektor zadany (cyjan) i rzeczywisty (biały), a na obręczy
+// łuki obrotu w tych samych kolorach. Obwód okręgu odpowiada MAX_RPM, więc jeśli
+// biały wektor nigdy go nie dosięga przy pełnym wychyleniu drążka, to znaczy że
+// MAX_RPM = 180 jest wartością zawyżoną.
+void DisplayManager::panelRadar(float tvx, float tvy, float tw,
+                                float mvx, float mvy, float mw, bool valid) {
     int16_t sig[7] = { (int16_t)tvx, (int16_t)tvy, (int16_t)tw,
                        (int16_t)mvx, (int16_t)mvy, (int16_t)mw, (int16_t)valid };
-    if (!panelChanged(2, sig, sizeof(sig))) return;
+    if (!panelChanged(5, sig, sizeof(sig))) return;
 
-    spriteLower.fillSprite(TFT_BLACK);
+    spriteRadar.fillSprite(TFT_BLACK);
+    const int cx = 64, cy = 62, r = 54;
 
-    const int cx = 34, cy = 35, r = 30;
-    spriteLower.drawCircle(cx, cy, r, TFT_BLUE);
-    spriteLower.drawFastHLine(cx - 3, cy, 7, TFT_DARKGREY);
-    spriteLower.drawFastVLine(cx, cy - 3, 7, TFT_DARKGREY);
+    spriteRadar.drawCircle(cx, cy, r, TFT_BLUE);          // pełna prędkość
+    spriteRadar.drawCircle(cx, cy, r / 2, 0x18E3);        // połowa, przygaszona
+    spriteRadar.drawFastHLine(cx - 4, cy, 9, TFT_DARKGREY);
+    spriteRadar.drawFastVLine(cx, cy - 4, 9, TFT_DARKGREY);
 
     if (valid) {
         const float maxRpm = (float)MAX_RPM_TELEMETRY;
-        drawVector(cx, cy, r, tvx / maxRpm, tvy / maxRpm, TFT_CYAN);
-        drawVector(cx, cy, r, mvx / maxRpm, mvy / maxRpm, TFT_WHITE);
+        drawSpinArc(spriteRadar, cx, cy, r - 3,  tw / maxRpm, TFT_CYAN);
+        drawSpinArc(spriteRadar, cx, cy, r - 9,  mw / maxRpm, TFT_WHITE);
+        drawVector(spriteRadar, cx, cy, r, tvx / maxRpm, tvy / maxRpm, TFT_CYAN);
+        drawVector(spriteRadar, cx, cy, r, mvx / maxRpm, mvy / maxRpm, TFT_WHITE);
 
-        // Prędkość liniowa z długości wektora zmierzonego.
-        float rpm  = sqrtf(mvx * mvx + mvy * mvy);
-        float mps  = rpm * RPM_TO_MPS;
-
-        spriteLower.setTextSize(1);
-        spriteLower.setTextColor(TFT_WHITE);
-        spriteLower.setCursor(72, 6);
-        spriteLower.printf("%4.2f m/s", mps);
-        spriteLower.setTextColor(TFT_CYAN);
-        spriteLower.setCursor(72, 20);
-        spriteLower.printf("vy %4.0f", mvy);
-        spriteLower.setCursor(72, 32);
-        spriteLower.printf("vx %4.0f", mvx);
-        spriteLower.setCursor(72, 44);
-        spriteLower.printf("ob %4.0f", mw);
-        spriteLower.setTextColor(TFT_DARKGREY);
-        spriteLower.setCursor(72, 58);
-        spriteLower.print("0,1 RPM");
+        float rpm = sqrtf(mvx * mvx + mvy * mvy);
+        spriteRadar.setTextSize(2);
+        spriteRadar.setTextColor(TFT_WHITE);
+        spriteRadar.setCursor(18, 120);
+        spriteRadar.printf("%4.2f m/s", rpm * RPM_TO_MPS);
     } else {
-        spriteLower.setTextSize(1);
-        spriteLower.setTextColor(TFT_DARKGREY);
-        spriteLower.setCursor(72, 30);
-        spriteLower.print("brak");
-        spriteLower.setCursor(72, 42);
-        spriteLower.print("danych");
+        spriteRadar.setTextSize(2);
+        spriteRadar.setTextColor(TFT_DARKGREY);
+        spriteRadar.setCursor(24, 120);
+        spriteRadar.print("brak danych");
     }
-    spriteLower.pushSprite(0, LOWER_Y);
+    spriteRadar.pushSprite(0, RADAR_Y);
 }
 
 // Ekran kół: dla każdego koła słupek zmierzonych obrotów i znacznik zadanych.
@@ -238,35 +259,46 @@ void DisplayManager::panelWheels(const WheelRow rows[4]) {
         if (t < -barW / 2) t = -barW / 2;
         spriteLower.drawFastVLine(barMid + t, y, 11, TFT_YELLOW);
 
+        // Liczba CAŁKOWITA: przy próbkowaniu co 20 ms rozdzielczość pomiaru
+        // wynosi około 3 RPM, więc część dziesiętna nie istnieje — udawała.
         spriteLower.setTextColor(TFT_WHITE);
         spriteLower.setCursor(78, y + 2);
-        spriteLower.printf("%5.1f", rows[i].measured / 10.0f);
+        spriteLower.printf("%4d", (int)lroundf(rows[i].measured / 10.0f));
     }
     spriteLower.pushSprite(0, LOWER_Y);
 }
 
-void DisplayManager::panelLink(uint32_t rttMs, unsigned lossPermille,
-                               uint32_t telemSeq, uint32_t ackErrors,
-                               uint32_t protoErrors) {
-    uint32_t sig[5] = { rttMs, lossPermille, telemSeq / 25, ackErrors, protoErrors };
+void DisplayManager::panelLink(unsigned rangePercent, unsigned ackLossPercent,
+                               unsigned telemLossPermille, uint32_t protoErrors) {
+    uint32_t sig[4] = { rangePercent, ackLossPercent, telemLossPermille, protoErrors };
     if (!panelChanged(4, sig, sizeof(sig))) return;
 
     spriteLower.fillSprite(TFT_BLACK);
     spriteLower.setTextSize(1);
+
+    // Belka zasięgu. Odwzorowanie jest CELOWO nieliniowe: strata pakietów nie
+    // rośnie liniowo z odległością, tylko wystrzeliwuje przy krawędzi zasięgu.
+    // Belka pokazuje zapas do tej krawędzi, a nie procent strat.
     spriteLower.setTextColor(TFT_WHITE);
     spriteLower.setCursor(0, 2);
-    spriteLower.printf("RTT     %lu ms", (unsigned long)rttMs);
-    spriteLower.setCursor(0, 14);
-    spriteLower.setTextColor(lossPermille ? TFT_YELLOW : TFT_WHITE);
-    spriteLower.printf("strata  %u/1000", lossPermille);
-    spriteLower.setCursor(0, 26);
+    spriteLower.print("zasieg");
+
+    const int barX = 46, barY = 2, barW = 78, barH = 9;
+    spriteLower.drawRect(barX, barY, barW, barH, TFT_DARKGREY);
+    int fill = (int)(barW - 2) * (int)rangePercent / 100;
+    uint16_t col = (rangePercent > 60) ? TFT_GREEN
+                 : (rangePercent > 25) ? TFT_YELLOW : TFT_RED;
+    if (fill > 0) spriteLower.fillRect(barX + 1, barY + 1, fill, barH - 2, col);
+
     spriteLower.setTextColor(TFT_WHITE);
-    spriteLower.printf("ramek   %lu", (unsigned long)telemSeq);
-    spriteLower.setCursor(0, 38);
-    spriteLower.setTextColor(ackErrors ? TFT_YELLOW : TFT_WHITE);
-    spriteLower.printf("bez ACK %lu", (unsigned long)ackErrors);
-    spriteLower.setCursor(0, 50);
+    spriteLower.setCursor(0, 18);
+    spriteLower.printf("bez ACK  %u%% ze 100", ackLossPercent);
+    spriteLower.setCursor(0, 32);
+    spriteLower.setTextColor(telemLossPermille ? TFT_YELLOW : TFT_WHITE);
+    spriteLower.printf("strata   %u/1000", telemLossPermille);
+    spriteLower.setCursor(0, 46);
     spriteLower.setTextColor(protoErrors ? TFT_RED : TFT_WHITE);
-    spriteLower.printf("bledy   %lu", (unsigned long)protoErrors);
+    spriteLower.printf("bledy    %lu", (unsigned long)protoErrors);
+
     spriteLower.pushSprite(0, LOWER_Y);
 }

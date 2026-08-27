@@ -4,10 +4,20 @@
 #include <TFT_eSPI.h>
 #include "messages.h"
 
-// Podział ekranu 128x160 — stały dla wszystkich widoków:
-//   y   0..63   pierścienie drążków z kropkami echa (nie zmieniają się)
+// Ekran ma DWA układy.
+//
+// Układ zwykły (koła, łącze, przyciski):
+//   y   0..63   pierścienie drążków z kropkami echa
 //   y  65..88   pas stanu łącza
 //   y  90..159  panel dolny — treść zależna od wybranego ekranu
+//
+// Układ radaru (ekran jazdy):
+//   y   0..23   pas stanu łącza
+//   y  24..159  radar na całą resztę
+//
+// Na radarze pierścienie drążków są zbędne: kropka echa dowodziła, że platforma
+// czyta właściwe pola, a radar dowodzi WIĘCEJ — rysuje się z obrotów kół, więc
+// potwierdza całą drogę razem z kinematyką i regulatorem.
 //
 // Panel dolny to JEDEN sprite współdzielony przez wszystkie widoki. Dwa dawne
 // sprite'y przycisków (64x70 każdy) zajmowały dokładnie tyle samo pamięci co
@@ -17,6 +27,10 @@
 constexpr int LOWER_Y = 90;
 constexpr int LOWER_W = 128;
 constexpr int LOWER_H = 70;
+
+constexpr int RADAR_Y = 24;
+constexpr int RADAR_W = 128;
+constexpr int RADAR_H = 136;
 
 struct WheelRow {
     int16_t target;    // 0,1 RPM, konwencja robota
@@ -33,23 +47,25 @@ public:
     void showSplash(uint8_t protoVersion, uint32_t buildId, const char* statusLine);
 
     void clearAll();     ///< czyści cały ekran (wyjście ze splasha)
-    void clearLower();   ///< czyści sam panel dolny (zmiana ekranu)
 
     /// Wymusza przerysowanie wszystkiego (po zejściu ze splasha lub zmianie ekranu).
     void invalidate();
 
     void updateJoystick(int lx, int ly, int rx, int ry,
                         bool echoValid, int elx, int ely, int erx, int ery);
-    void updateLinkStatus(const char* text, uint16_t color);
+    void updateLinkStatus(const char* text, uint16_t color, int y);
 
     // --- panele dolne, każdy rysuje tylko przy zmianie danych ---
     void panelButtons(const bool L[6], const bool R[6]);
-    void panelMotion(float tvx, float tvy, float tw,   // zadane, 0,1 RPM
-                     float mvx, float mvy, float mw,   // zmierzone, 0,1 RPM
-                     bool valid);
     void panelWheels(const WheelRow rows[4]);
-    void panelLink(uint32_t rttMs, unsigned lossPermille,
-                   uint32_t telemSeq, uint32_t ackErrors, uint32_t protoErrors);
+
+    /// RTT nie wraca tutaj — jest w pasie stanu, widoczny na każdym ekranie.
+    void panelLink(unsigned rangePercent, unsigned ackLossPercent,
+                   unsigned telemLossPermille, uint32_t protoErrors);
+
+    /// Radar na pełny ekran: wektory jazdy i łuki obrotu.
+    void panelRadar(float tvx, float tvy, float tw,
+                    float mvx, float mvy, float mw, bool valid);
 
 private:
     TFT_eSPI tft;
@@ -57,6 +73,7 @@ private:
     TFT_eSprite spriteJoystick_R;
     TFT_eSprite spriteStatus;
     TFT_eSprite spriteLower;
+    TFT_eSprite spriteRadar;
 
     int  lastLx, lastLy, lastRx, lastRy;
     int  lastElx, lastEly, lastErx, lastEry;
@@ -69,7 +86,10 @@ private:
 
     bool panelChanged(uint8_t id, const void* data, size_t len);
     void fillDiamond(TFT_eSprite& sprite, int cx, int cy, int size, uint16_t color);
-    void drawVector(int cx, int cy, int r, float vx, float vy, uint16_t color);
+    void drawVector(TFT_eSprite& sp, int cx, int cy, int r,
+                    float vx, float vy, uint16_t color);
+    void drawSpinArc(TFT_eSprite& sp, int cx, int cy, int r,
+                     float frac, uint16_t color);
 };
 
 #endif // DISPLAY_MANAGER_H
