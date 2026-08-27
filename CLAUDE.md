@@ -22,8 +22,10 @@ Konsekwencje dla tego repo:
 - Pad odbiera `MSG_HELLO` i telemetrię z platformy. Z telemetrii rysuje na
   razie **kropkę echa** w pierścieniach drążków; reszta pól czeka na
   zagospodarowanie.
-- `macMonitorDebug`, wysyłka do monitora w `TaskESPNow` oraz liczniki
-  `ESP_NOW_Monitor_*` w `errors.h` są przeznaczone do usunięcia, nie do rozwijania.
+- Wysyłka do monitora i jego peer zostały usunięte: unicast bez odbiorcy
+  powodował ponawianie transmisji przez warstwę MAC tuż przed ramką do
+  platformy. Liczniki `ESP_NOW_Monitor_*` w `errors.h` są już nieużywane
+  i czekają na usunięcie.
 
 ## Niezmiennik: `src/messages.h` musi być identyczny z kopią w repo platformy
 
@@ -52,6 +54,13 @@ raz, a to, co się zmienia w trakcie jazdy, potrzebuje miejsca na stałe.
 Uwaga na nachodzenie sprite'ów: `spriteMessages` (y=96, wys. 30) i sprite'y
 przycisków (y=90, wys. 70) **zachodzą na siebie** — wygrywa wypychany później.
 Sprite statusu ma dlatego 24 piksele, nie 30.
+
+Tempo: drążki 50 Hz, wysyłka 50 Hz, telemetria z platformy 50 Hz, rysowanie
+50 Hz. Te okresy muszą pozostać **zbliżone**. Gdy wysyłka, telemetria
+i rysowanie chodziły po 20 Hz, trzy niezsynchronizowane okresy 50 ms dawały
+odstępy między aktualizacjami kropki od 0 do 100 ms — kropka szarpała mimo
+zdrowego łącza i zerowych strat. Spowolnienie któregokolwiek z tych zadań
+przywróci ten objaw.
 
 Docelowa forma sprzężenia zwrotnego z platformy jest graficzna, nie tekstowa:
 kropka odesłanych osi w pierścieniu drążka, a w przyszłości wektor kierunku

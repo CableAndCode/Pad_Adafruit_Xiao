@@ -40,13 +40,21 @@ static SemaphoreHandle_t telemetryMutex = nullptr;
 static Msg_Telemetry     lastTelemetry;
 static volatile uint32_t lastTelemetryMs = 0;
 static volatile uint32_t telemSeqLast    = 0;
-static volatile uint32_t telemRecvCount  = 0;
+static volatile bool     telemEverSeen   = false;  // znacznik trwały
+static volatile uint32_t telemRecvCount  = 0;      // licznik okna, zerowany
 static volatile uint32_t telemMissCount  = 0;
 
 // Telemetria idzie 20 Hz, więc cisza dłuższa niż to = osiem zgubionych ramek.
 // Zastępuje wykrywanie po HELLO, które przy interwale 5 s było bezużytecznie
 // wolne — zostaje ono tylko dla przypadku „platformy nie widzieliśmy nigdy".
 constexpr uint32_t TELEM_TIMEOUT_MS = 400;
+
+// Czas wysyłki ramki o danym numerze — do policzenia drogi w obie strony
+// z echoSeq. Przy 50 Hz 64 pozycje to ~1,3 s historii, grubo powyżej
+// jakiegokolwiek sensownego opóźnienia.
+constexpr uint32_t RTT_RING = 64;
+static volatile uint32_t sendMs[RTT_RING] = { 0 };
+static volatile uint32_t lastRttMs = 0;
 static volatile uint32_t handshakeAtMs    = 0;  // moment pierwszej zgodnej wersji
 
 // Napis z wersją jest KOMUNIKATEM STARTOWYM, nie stałym elementem — po
@@ -113,11 +121,20 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
             lastTelemetryMs = millis();
             telemetryCount++;
             // Luki w numeracji = ramki telemetrii zgubione po drodze.
-            if (telemRecvCount > 0 && lastTelemetry.seq > telemSeqLast + 1) {
+            if (telemEverSeen && lastTelemetry.seq > telemSeqLast + 1) {
                 telemMissCount += lastTelemetry.seq - telemSeqLast - 1;
             }
             telemSeqLast = lastTelemetry.seq;
             telemRecvCount++;
+            telemEverSeen = true;
+
+            // Droga w obie strony: od wysłania ramki o numerze echoSeq do
+            // chwili, gdy wróciła w telemetrii. Mierzone na JEDNYM zegarze,
+            // więc rozjazd zegarów obu urządzeń nie ma tu znaczenia.
+            uint32_t es = lastTelemetry.echoSeq;
+            if (es > 0 && (totalMessages - es) < RTT_RING) {
+                lastRttMs = millis() - sendMs[es % RTT_RING];
+            }
             xSemaphoreGive(telemetryMutex);
         }
         return;
@@ -149,13 +166,6 @@ void TaskHello(void *pvParameters) {
 
 // --- Callback: Confirm delivery status of sent ESP-NOW messages ---
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-    if (memcmp(mac_addr, macMonitorDebug, 6) == 0) {
-        ESP_NOW_Monitor_Error = (status != ESP_NOW_SEND_SUCCESS);
-        if (ESP_NOW_Monitor_Error) {
-            ESP_NOW_Monitor_Send_Error_Counter++;
-        }
-    }
-
     if (memcmp(mac_addr, macPlatformMecanum, 6) == 0) {
         ESP_NOW_Platform_Error = (status != ESP_NOW_SEND_SUCCESS);
         if (ESP_NOW_Platform_Error) {
@@ -219,7 +229,11 @@ void TaskGamepads(void *pvParameters) {
 // Every 50 ms, copies the latest gamepad data and transmits it via ESP-NOW to monitor and platform receivers.
 void TaskESPNow(void *pvParameters) {
     (void)pvParameters;
-    const TickType_t xFrequency = pdMS_TO_TICKS(50); // 20 Hz
+    // 50 Hz, zgodnie z tempem odczytu drążków. Przy 20 Hz trzy niezależne
+    // pętle 50 ms (wysyłka, telemetria, rysowanie) przesuwały się fazami
+    // względem siebie i odstępy między aktualizacjami kropki skakały od 0
+    // do 100 ms — to, a nie sama częstotliwość, wyglądało jak szarpanie.
+    const TickType_t xFrequency = pdMS_TO_TICKS(20); // 50 Hz
     TickType_t xLastWakeTime = xTaskGetTickCount();
     Msg_PadControl localMsg;
 
@@ -228,13 +242,13 @@ void TaskESPNow(void *pvParameters) {
         xSemaphoreTake(messageMutex, portMAX_DELAY);
         totalMessages++;
         message.seq = totalMessages;
+        sendMs[totalMessages % RTT_RING] = millis();
         memcpy(&localMsg, &message, sizeof(Msg_PadControl));
         xSemaphoreGive(messageMutex);
 
-        // Send to debug monitor (adresat do usunięcia w kroku sprzątania)
-        esp_now_send(macMonitorDebug, (uint8_t *)&localMsg, sizeof(Msg_PadControl));
-
-        // Send to mecanum platform
+        // Jedyny odbiorca. Wysyłka pod adres porzuconego monitora kosztowała
+        // ponawianie transmisji przez warstwę MAC (unicast bez ACK) tuż przed
+        // ramką, która ma znaczenie — i to było widać jako drgająca kropka.
         esp_now_send(macPlatformMecanum, (uint8_t *)&localMsg, sizeof(Msg_PadControl));
 
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
@@ -246,7 +260,7 @@ void TaskESPNow(void *pvParameters) {
 // Every 50 ms, reads joystick and button states and updates the display accordingly.
 void TaskTFTScreen(void *pvParameters) {
     (void)pvParameters;
-    const TickType_t xFrequency = pdMS_TO_TICKS(50); // 20 Hz
+    const TickType_t xFrequency = pdMS_TO_TICKS(20); // 50 Hz
     TickType_t xLastWakeTime = xTaskGetTickCount();
 
     while (1) {
@@ -282,7 +296,7 @@ void TaskTFTScreen(void *pvParameters) {
         int  elx = 0, ely = 0, erx = 0, ery = 0;
         bool echoValid = false;
         if (xSemaphoreTake(telemetryMutex, portMAX_DELAY) == pdTRUE) {
-            echoValid = (telemRecvCount > 0) &&
+            echoValid = telemEverSeen &&
                         ((millis() - lastTelemetryMs) < TELEM_TIMEOUT_MS);
             elx = lastTelemetry.echoAxisLX;
             ely = lastTelemetry.echoAxisLY;
@@ -298,6 +312,18 @@ void TaskTFTScreen(void *pvParameters) {
         uint16_t linkColor = TFT_GREEN;
         uint32_t nowMs = millis();
 
+        // Strata liczona w oknie, nie od startu — inaczej po kilku minutach
+        // jazdy pojedyncze zgubione ramki rozpuszczałyby się w średniej.
+        static uint32_t lossWindowMs = 0;
+        static unsigned telemLossPermille = 0;
+        if (nowMs - lossWindowMs > 2000) {
+            uint32_t tot = telemRecvCount + telemMissCount;
+            telemLossPermille = tot ? (unsigned)((telemMissCount * 1000u) / tot) : 0;
+            telemRecvCount = 0;
+            telemMissCount = 0;
+            lossWindowMs = nowMs;
+        }
+
         if (protoErrorCount > 0) {
             snprintf(linkText, sizeof(linkText), "?TYP %u  LEN %d",
                      (unsigned)lastUnknownType, lastUnknownLen);
@@ -309,12 +335,12 @@ void TaskTFTScreen(void *pvParameters) {
             snprintf(linkText, sizeof(linkText), "PLAT v%u  ZLA WERSJA",
                      (unsigned)platProtoVersion);
             linkColor = TFT_RED;
-        } else if (telemRecvCount > 0 && !echoValid) {
+        } else if (telemEverSeen && !echoValid) {
             // Telemetria kiedyś dochodziła i przestała — to wykrycie jest
             // szybkie (20 Hz), więc ma pierwszeństwo przed ciszą HELLO.
             snprintf(linkText, sizeof(linkText), "PLAT ZGUBIONA");
             linkColor = TFT_RED;
-        } else if (telemRecvCount == 0 &&
+        } else if (!telemEverSeen &&
                    (nowMs - lastPlatHelloMs) > PLAT_HELLO_TIMEOUT_MS) {
             snprintf(linkText, sizeof(linkText), "PLAT ZGUBIONA");
             linkColor = TFT_RED;
@@ -323,7 +349,11 @@ void TaskTFTScreen(void *pvParameters) {
                      (unsigned)platProtoVersion);
             linkColor = TFT_GREEN;
         } else {
-            linkText[0] = '\0';   // pas pusty — miejsce zwolnione
+            // Po zgaśnięciu banera pas pokazuje to, co zmienia się w trakcie
+            // jazdy: drogę w obie strony i stratę ramek w bieżącym oknie.
+            snprintf(linkText, sizeof(linkText), "RTT %ums  L%u",
+                     (unsigned)lastRttMs, (unsigned)telemLossPermille);
+            linkColor = TFT_CYAN;
         }
 
         // Przerysowujemy tylko przy zmianie. Bez tego pas szedłby po SPI
@@ -394,17 +424,9 @@ void setup() {
     // task WiFi może wywołać OnDataRecv natychmiast, gdy setup() jeszcze trwa.
     esp_now_register_recv_cb(OnDataRecv);
 
-    // Add debug monitor peer
-    memcpy(peerInfo.peer_addr, macMonitorDebug, 6);
-    peerInfo.channel = 0;
-    peerInfo.encrypt = false;
-    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-        Serial.println("Failed to add peer (monitor)");
-        return;
-    }
-
-    // Add mecanum platform peer
+    // Add mecanum platform peer — jedyny partner Pada
     memcpy(peerInfo.peer_addr, macPlatformMecanum, 6);
+    peerInfo.channel = 0;
     peerInfo.encrypt = false;
     if (esp_now_add_peer(&peerInfo) != ESP_OK) {
         Serial.println("Failed to add peer (platform)");

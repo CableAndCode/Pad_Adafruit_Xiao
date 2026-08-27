@@ -7,6 +7,7 @@ DisplayManager::DisplayManager()
       spriteButtons_L(&tft), spriteButtons_R(&tft),
       lastLx(-1), lastLy(-1), lastRx(-1), lastRy(-1),
       lastElx(-1), lastEly(-1), lastErx(-1), lastEry(-1), lastEchoValid(false),
+      lastBtnL(-1), lastBtnR(-1),
       lastPacketsSent(-1), lastErrors(-1) {}
 
 // Helper function for drawing a diamond shape
@@ -93,6 +94,12 @@ void DisplayManager::showMessage(const char* message) {
 }
 
 void DisplayManager::updateButtonsL(bool A, bool B, bool X, bool Y, bool Select, bool Start) {
+    // Przerysowujemy tylko przy zmianie — przyciski zmieniają się rzadko,
+    // a bezwarunkowy pushSprite zajmowal SPI przed rysowaniem kropki.
+    uint8_t state = (A?1:0)|(B?2:0)|(X?4:0)|(Y?8:0)|(Select?16:0)|(Start?32:0);
+    if (state == lastBtnL) return;
+    lastBtnL = state;
+
     spriteButtons_L.fillSprite(TFT_BLACK);
 
     uint16_t colX = X ? TFT_RED : TFT_WHITE;
@@ -114,6 +121,12 @@ void DisplayManager::updateButtonsL(bool A, bool B, bool X, bool Y, bool Select,
 }
 
 void DisplayManager::updateButtonsR(bool A, bool B, bool X, bool Y, bool Select, bool Start) {
+    // Przerysowujemy tylko przy zmianie — przyciski zmieniają się rzadko,
+    // a bezwarunkowy pushSprite zajmowal SPI przed rysowaniem kropki.
+    uint8_t state = (A?1:0)|(B?2:0)|(X?4:0)|(Y?8:0)|(Select?16:0)|(Start?32:0);
+    if (state == lastBtnR) return;
+    lastBtnR = state;
+
     spriteButtons_R.fillSprite(TFT_BLACK);
 
     uint16_t colX = X ? TFT_RED : TFT_WHITE;

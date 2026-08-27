@@ -16,6 +16,7 @@ private:
     int lastLx, lastLy, lastRx, lastRy;
     int lastElx, lastEly, lastErx, lastEry;
     bool lastEchoValid;
+    int lastBtnL, lastBtnR;
     int lastPacketsSent, lastErrors;
 
     // Private helper: draws a filled diamond shape
