@@ -50,9 +50,15 @@ nie stałym elementem — gaśnie kilka sekund po handshake'u. Docelowo pas nale
 do siły sygnału i ostrzeżeń, bo informacja „wersje się zgadzają" jest potrzebna
 raz, a to, co się zmienia w trakcie jazdy, potrzebuje miejsca na stałe.
 
-Uwaga na nachodzenie sprite'ów: `spriteMessages` (y=96, wys. 30) i sprite'y
-przycisków (y=90, wys. 70) **zachodzą na siebie** — wygrywa wypychany później.
-Sprite statusu ma dlatego 24 piksele, nie 30.
+Ekran dzieli się na trzy stałe strefy: pierścienie drążków (y 0..63), pas
+stanu (y 65..88) i **panel dolny** (y 90..159). Panel dolny to jeden sprite
+współdzielony przez wszystkie widoki — każdy kolejny ekran rysuje w tym samym
+buforze. Osobne sprite'y na ekran kosztowałyby po ~18 kB każdy.
+
+Wybór ekranu jest **lokalny dla Pada** — nie zajmuje ani jednego bitu w eterze,
+bo platformy nie obchodzi, na co patrzy operator. SELECT lewego pada przewija
+w przód, prawego w tył. **START jest celowo wolny** — zarezerwowany pod przyszły
+przycisk awaryjny, który nie może kolidować z nawigacją.
 
 Tempo: drążki 50 Hz, wysyłka 50 Hz, telemetria z platformy 50 Hz, rysowanie
 50 Hz. Te okresy muszą pozostać **zbliżone**. Gdy wysyłka, telemetria

@@ -22,7 +22,7 @@
 //  KOMPILACJI — pod warunkiem, że oba repo mają ten plik identyczny.
 // =====================================================================
 
-constexpr uint8_t PROTO_VERSION = 2;
+constexpr uint8_t PROTO_VERSION = 3;
 
 // ===== Typy wiadomości (pierwszy bajt każdej ramki) =====
 constexpr uint8_t MSG_HELLO       = 1;  // ogłoszenie wersji, w obie strony
@@ -128,8 +128,12 @@ typedef struct __attribute__((packed)) {
     int16_t  echoAxisRX, echoAxisRY;
     uint32_t echoSeq;                 // seq echowanej ramki — daje RTT w ms
 
-    int16_t  targetRPM[4];            // FL, FR, RL, RR — 0,1 RPM
-    int16_t  measuredRPM[4];          // 0,1 RPM
+    // FL, FR, RL, RR w 0,1 RPM, w konwencji ROBOTA: dodatnie = do przodu dla
+    // każdego koła. Odwrócenie prawej strony (invertDirection) jest odkręcane
+    // po stronie platformy — Pad nie może o nim wiedzieć, bo inaczej musiałby
+    // znać konfigurację sprzętu drugiego urządzenia.
+    int16_t  targetRPM[4];
+    int16_t  measuredRPM[4];
     int16_t  pwm[4];                  // wyjście regulatora, jednostki PWM
 
     int16_t  motorMilliAmp[4];        // ZAREZERWOWANE — bocznik per koło
@@ -142,12 +146,19 @@ typedef struct __attribute__((packed)) {
     int16_t  headingOdo;              // ZAREZERWOWANE — kurs z kół, 0,1°
     int16_t  headingImu;              // ZAREZERWOWANE — kurs z żyroskopu, 0,1°
     int16_t  pitch, roll;             // ZAREZERWOWANE — 0,1°
+    int16_t  gyroYawRate;             // ZAREZERWOWANE — 0,1°/s z żyroskopu
+    int16_t  accelX, accelY;          // ZAREZERWOWANE — mm/s²
+
+    // Po co żyroskop i akcelerometr obok danych z kół: koła w poślizgu kręcą
+    // się szybciej, niż jedzie robot. Prędkość kątowa z żyroskopu porównana
+    // z tą wyliczoną z kół daje miarę poślizgu, a przyspieszenie z kół jest
+    // w ogóle niemierzalne — stąd accelX/accelY pod wektor ze sprzężeniem.
 
     int8_t   rssiFromPad;             // jak PLATFORMA słyszy Pada (0 = brak danych)
     uint8_t  padLossPermille;         // ile ramek z Pada zgubione, ‰
     uint16_t motorCtrlTimeUs;         // czas motorControlTask, µs
 } Msg_Telemetry;
-static_assert(sizeof(Msg_Telemetry) == 88, "Msg_Telemetry: rozjazd z drugim repo!");
+static_assert(sizeof(Msg_Telemetry) == 94, "Msg_Telemetry: rozjazd z drugim repo!");
 
 // ---------------------------------------------------------------------
 //  MSG_SET_PID — zdalna zmiana nastaw. Dziedzictwo po porzuconym
@@ -167,6 +178,39 @@ static_assert(sizeof(Msg_SetPID) == 16, "Msg_SetPID: rozjazd z drugim repo!");
 //  rozpoznania „wgrałem stare firmware", nie do kontroli zgodności —
 //  od tego jest protoVersion.
 // ---------------------------------------------------------------------
+// =====================================================================
+//  Stałe systemowe wspólne dla obu urządzeń
+//
+//  Nie są częścią formatu ramki, ale MUSZĄ być zgodne po obu stronach —
+//  Pad przelicza z nich obroty na prędkość i skaluje wskaźniki. Mieszkają
+//  tutaj, bo identyczność tego pliku jest pilnowanym niezmiennikiem.
+//  Po stronie platformy `static_assert` sprawdza zgodność z MAX_RPM.
+// =====================================================================
+
+constexpr int   MAX_RPM_TELEMETRY = 1800;    // MAX_RPM = 180, w jednostkach 0,1 RPM
+constexpr float WHEEL_DIAMETER_M  = 0.060f;  // średnica koła mecanum
+
+// Przelicznik z jednostek telemetrii (0,1 RPM koła) na m/s:
+//   v = (value / 10) * PI * D / 60
+constexpr float RPM_TO_MPS = 3.14159265f * WHEEL_DIAMETER_M / 600.0f;
+
+// Odwrócenie mieszania mecanum: z czterech kół z powrotem na ruch platformy.
+// Wzory muszą pozostać odwrotnością MecanumDrive::drive:
+//     FL = vy + vx + w      FR = vy − vx − w
+//     RL = vy − vx + w      RR = vy + vx − w
+// Wejście w konwencji robota (dodatnie = do przodu), wyjście w tych samych
+// jednostkach co wejście. Uwaga: vx wychodzi OPTYMISTYCZNE, bo rolki mecanum
+// ślizgają się bocznie z zasady działania.
+struct MecanumMotion { float vx, vy, omega; };
+
+inline MecanumMotion mecanumInverse(float fl, float fr, float rl, float rr) {
+    MecanumMotion m;
+    m.vy    = (fl + fr + rl + rr) * 0.25f;
+    m.vx    = (fl - fr - rl + rr) * 0.25f;
+    m.omega = (fl - fr + rl - rr) * 0.25f;
+    return m;
+}
+
 constexpr uint32_t protoFnv1a(const char* s, uint32_t h = 2166136261u) {
     return (*s == '\0') ? h : protoFnv1a(s + 1, (h ^ (uint32_t)(uint8_t)*s) * 16777619u);
 }

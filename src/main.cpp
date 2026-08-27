@@ -252,12 +252,95 @@ void TaskESPNow(void *pvParameters) {
 }
 
 
+// Ekran powitalny ustępuje po handshake, a gdyby platformy nie było wcale —
+// najpóźniej po tym czasie, żeby Pad nie zawiesił się na nim w nieskończoność.
+constexpr uint32_t SPLASH_MAX_MS = 6000;
+
+// Strata ramek telemetrii liczona w oknie, nie od startu — inaczej po kilku
+// minutach jazdy pojedyncze zgubione ramki rozpuszczałyby się w średniej.
+static unsigned telemLossPermille = 0;
+
+// Pas stanu: ostrzeżenia mają pierwszeństwo, a gdy wszystko gra, pokazuje to,
+// co zmienia się w trakcie jazdy — drogę w obie strony i stratę ramek.
+static void drawLinkStatusLine(uint32_t rttMs) {
+    char text[24];
+    uint16_t color = TFT_GREEN;
+    uint32_t nowMs = millis();
+
+    static uint32_t lossWindowMs = 0;
+    if (nowMs - lossWindowMs > 2000) {
+        uint32_t tot = telemRecvCount + telemMissCount;
+        telemLossPermille = tot ? (unsigned)((telemMissCount * 1000u) / tot) : 0;
+        telemRecvCount = 0;
+        telemMissCount = 0;
+        lossWindowMs = nowMs;
+    }
+
+    bool echoFresh = telemEverSeen && ((nowMs - lastTelemetryMs) < TELEM_TIMEOUT_MS);
+
+    if (protoErrorCount > 0) {
+        snprintf(text, sizeof(text), "?TYP %u  LEN %d",
+                 (unsigned)lastUnknownType, lastUnknownLen);
+        color = TFT_RED;
+    } else if (!platSeen) {
+        snprintf(text, sizeof(text), "PLAT --  szukam");
+        color = TFT_YELLOW;
+    } else if (!platProtoOk) {
+        snprintf(text, sizeof(text), "PLAT v%u  ZLA WERSJA",
+                 (unsigned)platProtoVersion);
+        color = TFT_RED;
+    } else if (telemEverSeen && !echoFresh) {
+        snprintf(text, sizeof(text), "PLAT ZGUBIONA");
+        color = TFT_RED;
+    } else if (!telemEverSeen &&
+               (nowMs - lastPlatHelloMs) > PLAT_HELLO_TIMEOUT_MS) {
+        snprintf(text, sizeof(text), "PLAT ZGUBIONA");
+        color = TFT_RED;
+    } else if ((nowMs - handshakeAtMs) < LINK_BANNER_MS) {
+        snprintf(text, sizeof(text), "PLAT v%u  OK", (unsigned)platProtoVersion);
+        color = TFT_GREEN;
+    } else {
+        snprintf(text, sizeof(text), "RTT %ums  L%u",
+                 (unsigned)rttMs, telemLossPermille);
+        color = TFT_CYAN;
+    }
+
+    static char lastText[24] = { 1 };
+    static uint16_t lastColor = 0;
+    if (strcmp(text, lastText) != 0 || color != lastColor) {
+        display.updateLinkStatus(text, color);
+        strncpy(lastText, text, sizeof(lastText));
+        lastColor = color;
+    }
+}
+
+// --- Ekrany ---
+// Przełączanie jest LOKALNE na Padzie: wybór widoku nie dotyczy platformy,
+// więc nie ma po co zajmować nim ani jednego bitu w eterze.
+enum Screen : uint8_t {
+    SCR_DRIVE = 0,   // wektory prędkości — zadany i rzeczywisty
+    SCR_WHEELS,      // cztery koła osobno
+    SCR_LINK,        // jakość łącza w liczbach
+    SCR_BUTTONS,     // test przycisków
+    SCR_COUNT
+};
+
+// SELECT lewego pada przewija ekrany w przód, prawego w tył.
+// START zostaje WOLNY — jest zarezerwowany pod przyszły przycisk awaryjny
+// i nie może kolidować z nawigacją.
+static uint8_t currentScreen = SCR_DRIVE;
+
 // --- TASK 3: Updating the TFT display (TaskTFTScreen) ---
-// Every 50 ms, reads joystick and button states and updates the display accordingly.
+// Co 20 ms odczytuje stan drążków, przycisków i telemetrii, po czym rysuje
+// aktywny ekran. Każdy panel sam pilnuje, czy jego dane się zmieniły.
 void TaskTFTScreen(void *pvParameters) {
     (void)pvParameters;
     const TickType_t xFrequency = pdMS_TO_TICKS(20); // 50 Hz
     TickType_t xLastWakeTime = xTaskGetTickCount();
+
+    bool splashActive = true;
+    bool prevSelL = false, prevSelR = false;
+    uint32_t bootMs = millis();
 
     while (1) {
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
@@ -268,104 +351,101 @@ void TaskTFTScreen(void *pvParameters) {
         int ly = message.axisLY;
         int rx = message.axisRX;
         int ry = message.axisRY;
-
-        // Bity są już znormalizowane w packButtons(): 1 = wciśnięty.
         uint16_t btn = message.buttons;
         xSemaphoreGive(messageMutex);
 
-        bool L_Button_A      = btn & BTN_L_A;
-        bool L_Button_B      = btn & BTN_L_B;
-        bool L_Button_X      = btn & BTN_L_X;
-        bool L_Button_Y      = btn & BTN_L_Y;
-        bool L_Button_SELECT = btn & BTN_L_SELECT;
-        bool L_Button_START  = btn & BTN_L_START;
+        const bool L[6] = { (bool)(btn & BTN_L_A), (bool)(btn & BTN_L_B),
+                            (bool)(btn & BTN_L_X), (bool)(btn & BTN_L_Y),
+                            (bool)(btn & BTN_L_SELECT), (bool)(btn & BTN_L_START) };
+        const bool R[6] = { (bool)(btn & BTN_R_A), (bool)(btn & BTN_R_B),
+                            (bool)(btn & BTN_R_X), (bool)(btn & BTN_R_Y),
+                            (bool)(btn & BTN_R_SELECT), (bool)(btn & BTN_R_START) };
 
-        bool R_Button_A      = btn & BTN_R_A;
-        bool R_Button_B      = btn & BTN_R_B;
-        bool R_Button_X      = btn & BTN_R_X;
-        bool R_Button_Y      = btn & BTN_R_Y;
-        bool R_Button_SELECT = btn & BTN_R_SELECT;
-        bool R_Button_START  = btn & BTN_R_START;
-
-        // Echo osi z ostatniej telemetrii. Świeżość liczymy od odbioru ramki,
-        // nie od jej timestampu — zegary obu urządzeń nie są zsynchronizowane.
-        int  elx = 0, ely = 0, erx = 0, ery = 0;
+        // Kopia telemetrii pod mutexem — dalej pracujemy już na swojej kopii,
+        // żeby nie trzymać blokady przez czas rysowania.
+        Msg_Telemetry tel;
         bool echoValid = false;
+        uint32_t rtt = 0;
         if (xSemaphoreTake(telemetryMutex, portMAX_DELAY) == pdTRUE) {
+            memcpy(&tel, &lastTelemetry, sizeof(tel));
             echoValid = telemEverSeen &&
                         ((millis() - lastTelemetryMs) < TELEM_TIMEOUT_MS);
-            elx = lastTelemetry.echoAxisLX;
-            ely = lastTelemetry.echoAxisLY;
-            erx = lastTelemetry.echoAxisRX;
-            ery = lastTelemetry.echoAxisRY;
+            rtt = lastRttMs;
             xSemaphoreGive(telemetryMutex);
         }
 
-        // Pas stanu w wolnym miejscu nad przyciskami. Ostrzeżenia mają
-        // pierwszeństwo; komunikat o zgodnej wersji gaśnie po LINK_BANNER_MS
-        // i zostawia pas pusty na to, co przyjdzie później.
-        char linkText[24];
-        uint16_t linkColor = TFT_GREEN;
-        uint32_t nowMs = millis();
-
-        // Strata liczona w oknie, nie od startu — inaczej po kilku minutach
-        // jazdy pojedyncze zgubione ramki rozpuszczałyby się w średniej.
-        static uint32_t lossWindowMs = 0;
-        static unsigned telemLossPermille = 0;
-        if (nowMs - lossWindowMs > 2000) {
-            uint32_t tot = telemRecvCount + telemMissCount;
-            telemLossPermille = tot ? (unsigned)((telemMissCount * 1000u) / tot) : 0;
-            telemRecvCount = 0;
-            telemMissCount = 0;
-            lossWindowMs = nowMs;
+        // --- ekran powitalny: ustępuje po handshake albo po SPLASH_MAX_MS ---
+        if (splashActive) {
+            bool ready = platProtoOk && (millis() - handshakeAtMs) > 1500;
+            if (ready || (millis() - bootMs) > SPLASH_MAX_MS ||
+                L[4] || R[4]) {
+                splashActive = false;
+                display.invalidate();
+                display.clearAll();
+            } else {
+                static char splashStatus[24] = { 1 };
+                char st[24];
+                if (!platSeen)          snprintf(st, sizeof(st), "szukam platformy...");
+                else if (!platProtoOk)  snprintf(st, sizeof(st), "zla wersja: v%u",
+                                                 (unsigned)platProtoVersion);
+                else                    snprintf(st, sizeof(st), "polaczono");
+                if (strcmp(st, splashStatus) != 0) {
+                    display.showSplash(PROTO_VERSION, FW_BUILD_ID, st);
+                    strncpy(splashStatus, st, sizeof(splashStatus));
+                }
+                continue;
+            }
         }
 
-        if (protoErrorCount > 0) {
-            snprintf(linkText, sizeof(linkText), "?TYP %u  LEN %d",
-                     (unsigned)lastUnknownType, lastUnknownLen);
-            linkColor = TFT_RED;
-        } else if (!platSeen) {
-            snprintf(linkText, sizeof(linkText), "PLAT --  szukam");
-            linkColor = TFT_YELLOW;
-        } else if (!platProtoOk) {
-            snprintf(linkText, sizeof(linkText), "PLAT v%u  ZLA WERSJA",
-                     (unsigned)platProtoVersion);
-            linkColor = TFT_RED;
-        } else if (telemEverSeen && !echoValid) {
-            // Telemetria kiedyś dochodziła i przestała — to wykrycie jest
-            // szybkie (20 Hz), więc ma pierwszeństwo przed ciszą HELLO.
-            snprintf(linkText, sizeof(linkText), "PLAT ZGUBIONA");
-            linkColor = TFT_RED;
-        } else if (!telemEverSeen &&
-                   (nowMs - lastPlatHelloMs) > PLAT_HELLO_TIMEOUT_MS) {
-            snprintf(linkText, sizeof(linkText), "PLAT ZGUBIONA");
-            linkColor = TFT_RED;
-        } else if ((nowMs - handshakeAtMs) < LINK_BANNER_MS) {
-            snprintf(linkText, sizeof(linkText), "PLAT v%u  OK",
-                     (unsigned)platProtoVersion);
-            linkColor = TFT_GREEN;
-        } else {
-            // Po zgaśnięciu banera pas pokazuje to, co zmienia się w trakcie
-            // jazdy: drogę w obie strony i stratę ramek w bieżącym oknie.
-            snprintf(linkText, sizeof(linkText), "RTT %ums  L%u",
-                     (unsigned)lastRttMs, (unsigned)telemLossPermille);
-            linkColor = TFT_CYAN;
+        // --- nawigacja: zbocze narastające, żeby przytrzymanie nie przewijało ---
+        if (L[4] && !prevSelL) {
+            currentScreen = (currentScreen + 1) % SCR_COUNT;
+            display.invalidate();
+            display.clearLower();
         }
-
-        // Przerysowujemy tylko przy zmianie. Bez tego pas szedłby po SPI
-        // 20 razy na sekundę bez powodu, konkurując z resztą ekranu.
-        static char     lastText[24] = { 1 };
-        static uint16_t lastColor    = 0;
-        if (strcmp(linkText, lastText) != 0 || linkColor != lastColor) {
-            display.updateLinkStatus(linkText, linkColor);
-            strncpy(lastText, linkText, sizeof(lastText));
-            lastColor = linkColor;
+        if (R[4] && !prevSelR) {
+            currentScreen = (currentScreen + SCR_COUNT - 1) % SCR_COUNT;
+            display.invalidate();
+            display.clearLower();
         }
+        prevSelL = L[4];
+        prevSelR = R[4];
 
-        // Update display with latest joystick positions and button states
-        display.updateJoystick(lx, ly, rx, ry, echoValid, elx, ely, erx, ery);
-        display.updateButtonsL(L_Button_A, L_Button_B, L_Button_X, L_Button_Y, L_Button_SELECT, L_Button_START);
-        display.updateButtonsR(R_Button_A, R_Button_B, R_Button_X, R_Button_Y, R_Button_SELECT, R_Button_START);
+        // --- górna część ekranu: wspólna dla wszystkich widoków ---
+        display.updateJoystick(lx, ly, rx, ry, echoValid,
+                               tel.echoAxisLX, tel.echoAxisLY,
+                               tel.echoAxisRX, tel.echoAxisRY);
+        drawLinkStatusLine(rtt);
+
+        // --- panel dolny zależny od wybranego ekranu ---
+        switch (currentScreen) {
+        case SCR_DRIVE: {
+            // Wektor zadany i rzeczywisty, odtworzone z obrotów czterech kół.
+            MecanumMotion t = mecanumInverse(tel.targetRPM[0], tel.targetRPM[1],
+                                             tel.targetRPM[2], tel.targetRPM[3]);
+            MecanumMotion m = mecanumInverse(tel.measuredRPM[0], tel.measuredRPM[1],
+                                             tel.measuredRPM[2], tel.measuredRPM[3]);
+            display.panelMotion(t.vx, t.vy, t.omega, m.vx, m.vy, m.omega, echoValid);
+            break;
+        }
+        case SCR_WHEELS: {
+            WheelRow rows[4];
+            for (int i = 0; i < 4; i++) {
+                rows[i].target   = echoValid ? tel.targetRPM[i]   : 0;
+                rows[i].measured = echoValid ? tel.measuredRPM[i] : 0;
+                rows[i].pwm      = echoValid ? tel.pwm[i]         : 0;
+            }
+            display.panelWheels(rows);
+            break;
+        }
+        case SCR_LINK:
+            display.panelLink(rtt, telemLossPermille, tel.seq,
+                              ESP_NOW_Platform_Send_Error_Counter, protoErrorCount);
+            break;
+        case SCR_BUTTONS:
+            display.panelButtons(L, R);
+            break;
+        }
     }
 }
 
