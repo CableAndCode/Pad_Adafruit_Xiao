@@ -6,6 +6,7 @@ DisplayManager::DisplayManager()
       spriteMessages(&tft), spriteStatus(&tft),
       spriteButtons_L(&tft), spriteButtons_R(&tft),
       lastLx(-1), lastLy(-1), lastRx(-1), lastRy(-1),
+      lastElx(-1), lastEly(-1), lastErx(-1), lastEry(-1), lastEchoValid(false),
       lastPacketsSent(-1), lastErrors(-1) {}
 
 // Helper function for drawing a diamond shape
@@ -35,20 +36,39 @@ void DisplayManager::begin() {
     spriteButtons_R.fillScreen(TFT_BLACK);
 }
 
-void DisplayManager::updateJoystick(int lx, int ly, int rx, int ry) {
-    if (lx != lastLx || ly != lastLy || rx != lastRx || ry != lastRy) {
-        spriteJoystick_L.fillScreen(TFT_BLACK);
-        spriteJoystick_L.drawRect(0, 0, 64, 64, TFT_WHITE);
-        spriteJoystick_L.drawCircle(32 + lx / 16, 32 - ly / 16, 3, TFT_MAGENTA);
-        spriteJoystick_L.pushSprite(0, 0);
-
-        spriteJoystick_R.fillScreen(TFT_BLACK);
-        spriteJoystick_R.drawRect(0, 0, 64, 64, TFT_WHITE);
-        spriteJoystick_R.drawCircle(32 + rx / 16, 32 - ry / 16, 3, TFT_CYAN);
-        spriteJoystick_R.pushSprite(64, 0);
-
-        lastLx = lx; lastLy = ly; lastRx = rx; lastRy = ry;
+// Kropka echa: pozycja osi ODESŁANYCH przez platformę, narysowana w tym samym
+// układzie co pierścień drążka. Łącze żywe i nadążające = kropka siedzi
+// w środku pierścienia. Opóźnienie = wlecze się za nim. Straty = skacze.
+// To jedyny sygnał mówiący, że platforma czyta WŁAŚCIWE pola — zgodna wersja
+// protokołu dowodzi tylko, że obie strony mają ten sam plik.
+void DisplayManager::updateJoystick(int lx, int ly, int rx, int ry,
+                                    bool echoValid, int elx, int ely, int erx, int ery) {
+    if (lx == lastLx && ly == lastLy && rx == lastRx && ry == lastRy &&
+        echoValid == lastEchoValid &&
+        (!echoValid || (elx == lastElx && ely == lastEly &&
+                        erx == lastErx && ery == lastEry))) {
+        return;
     }
+
+    spriteJoystick_L.fillScreen(TFT_BLACK);
+    spriteJoystick_L.drawRect(0, 0, 64, 64, TFT_WHITE);
+    spriteJoystick_L.drawCircle(32 + lx / 16, 32 - ly / 16, 3, TFT_MAGENTA);
+    if (echoValid) {
+        spriteJoystick_L.fillCircle(32 + elx / 16, 32 - ely / 16, 1, TFT_WHITE);
+    }
+    spriteJoystick_L.pushSprite(0, 0);
+
+    spriteJoystick_R.fillScreen(TFT_BLACK);
+    spriteJoystick_R.drawRect(0, 0, 64, 64, TFT_WHITE);
+    spriteJoystick_R.drawCircle(32 + rx / 16, 32 - ry / 16, 3, TFT_CYAN);
+    if (echoValid) {
+        spriteJoystick_R.fillCircle(32 + erx / 16, 32 - ery / 16, 1, TFT_WHITE);
+    }
+    spriteJoystick_R.pushSprite(64, 0);
+
+    lastLx = lx; lastLy = ly; lastRx = rx; lastRy = ry;
+    lastElx = elx; lastEly = ely; lastErx = erx; lastEry = ery;
+    lastEchoValid = echoValid;
 }
 
 // Pas y = 65..88 jest wolny: ramki joysticków kończą się na 63, sprite'y

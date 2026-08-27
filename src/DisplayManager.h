@@ -14,6 +14,8 @@ private:
     TFT_eSprite spriteButtons_R;    // sprite for right gamepad buttons
 
     int lastLx, lastLy, lastRx, lastRy;
+    int lastElx, lastEly, lastErx, lastEry;
+    bool lastEchoValid;
     int lastPacketsSent, lastErrors;
 
     // Private helper: draws a filled diamond shape
@@ -22,7 +24,10 @@ private:
 public:
     DisplayManager();
     void begin();
-    void updateJoystick(int lx, int ly, int rx, int ry);
+    /// Pierścienie drążków. echoValid=false rysuje same pierścienie, bez
+    /// kropki — brak kropki JEST informacją: telemetria nie dociera.
+    void updateJoystick(int lx, int ly, int rx, int ry,
+                        bool echoValid, int elx, int ely, int erx, int ery);
 
     /// Jedna linia stanu łącza w wolnym pasie między ramkami joysticków
     /// a przyciskami. Nie dotyka żadnego innego sprite'a.

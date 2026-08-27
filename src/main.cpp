@@ -33,6 +33,20 @@ static volatile bool     platSeen         = false;  // widziano jakiekolwiek HEL
 static volatile bool     platProtoOk      = false;  // ...i wersja się zgadza
 static volatile uint32_t platHelloCount   = 0;
 static volatile uint32_t lastPlatHelloMs  = 0;  // millis() ostatniego HELLO
+
+// ---- Ostatnia odebrana telemetria ----
+// Zapisywana w callbacku (task WiFi), czytana przez task wyświetlacza.
+static SemaphoreHandle_t telemetryMutex = nullptr;
+static Msg_Telemetry     lastTelemetry;
+static volatile uint32_t lastTelemetryMs = 0;
+static volatile uint32_t telemSeqLast    = 0;
+static volatile uint32_t telemRecvCount  = 0;
+static volatile uint32_t telemMissCount  = 0;
+
+// Telemetria idzie 20 Hz, więc cisza dłuższa niż to = osiem zgubionych ramek.
+// Zastępuje wykrywanie po HELLO, które przy interwale 5 s było bezużytecznie
+// wolne — zostaje ono tylko dla przypadku „platformy nie widzieliśmy nigdy".
+constexpr uint32_t TELEM_TIMEOUT_MS = 400;
 static volatile uint32_t handshakeAtMs    = 0;  // moment pierwszej zgodnej wersji
 
 // Napis z wersją jest KOMUNIKATEM STARTOWYM, nie stałym elementem — po
@@ -94,8 +108,18 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
 
     case MSG_TELEMETRY:
         if (len != (int)sizeof(Msg_Telemetry)) break;
-        // Krok A tylko liczy ramki — wyświetlanie telemetrii to osobny krok.
-        telemetryCount++;
+        if (telemetryMutex && xSemaphoreTake(telemetryMutex, 0) == pdTRUE) {
+            memcpy(&lastTelemetry, incomingData, sizeof(Msg_Telemetry));
+            lastTelemetryMs = millis();
+            telemetryCount++;
+            // Luki w numeracji = ramki telemetrii zgubione po drodze.
+            if (telemRecvCount > 0 && lastTelemetry.seq > telemSeqLast + 1) {
+                telemMissCount += lastTelemetry.seq - telemSeqLast - 1;
+            }
+            telemSeqLast = lastTelemetry.seq;
+            telemRecvCount++;
+            xSemaphoreGive(telemetryMutex);
+        }
         return;
 
     default:
@@ -253,6 +277,20 @@ void TaskTFTScreen(void *pvParameters) {
         bool R_Button_SELECT = btn & BTN_R_SELECT;
         bool R_Button_START  = btn & BTN_R_START;
 
+        // Echo osi z ostatniej telemetrii. Świeżość liczymy od odbioru ramki,
+        // nie od jej timestampu — zegary obu urządzeń nie są zsynchronizowane.
+        int  elx = 0, ely = 0, erx = 0, ery = 0;
+        bool echoValid = false;
+        if (xSemaphoreTake(telemetryMutex, portMAX_DELAY) == pdTRUE) {
+            echoValid = (telemRecvCount > 0) &&
+                        ((millis() - lastTelemetryMs) < TELEM_TIMEOUT_MS);
+            elx = lastTelemetry.echoAxisLX;
+            ely = lastTelemetry.echoAxisLY;
+            erx = lastTelemetry.echoAxisRX;
+            ery = lastTelemetry.echoAxisRY;
+            xSemaphoreGive(telemetryMutex);
+        }
+
         // Pas stanu w wolnym miejscu nad przyciskami. Ostrzeżenia mają
         // pierwszeństwo; komunikat o zgodnej wersji gaśnie po LINK_BANNER_MS
         // i zostawia pas pusty na to, co przyjdzie później.
@@ -271,7 +309,13 @@ void TaskTFTScreen(void *pvParameters) {
             snprintf(linkText, sizeof(linkText), "PLAT v%u  ZLA WERSJA",
                      (unsigned)platProtoVersion);
             linkColor = TFT_RED;
-        } else if ((nowMs - lastPlatHelloMs) > PLAT_HELLO_TIMEOUT_MS) {
+        } else if (telemRecvCount > 0 && !echoValid) {
+            // Telemetria kiedyś dochodziła i przestała — to wykrycie jest
+            // szybkie (20 Hz), więc ma pierwszeństwo przed ciszą HELLO.
+            snprintf(linkText, sizeof(linkText), "PLAT ZGUBIONA");
+            linkColor = TFT_RED;
+        } else if (telemRecvCount == 0 &&
+                   (nowMs - lastPlatHelloMs) > PLAT_HELLO_TIMEOUT_MS) {
             snprintf(linkText, sizeof(linkText), "PLAT ZGUBIONA");
             linkColor = TFT_RED;
         } else if ((nowMs - handshakeAtMs) < LINK_BANNER_MS) {
@@ -293,7 +337,7 @@ void TaskTFTScreen(void *pvParameters) {
         }
 
         // Update display with latest joystick positions and button states
-        display.updateJoystick(lx, ly, rx, ry);
+        display.updateJoystick(lx, ly, rx, ry, echoValid, elx, ely, erx, ery);
         display.updateButtonsL(L_Button_A, L_Button_B, L_Button_X, L_Button_Y, L_Button_SELECT, L_Button_START);
         display.updateButtonsR(R_Button_A, R_Button_B, R_Button_X, R_Button_Y, R_Button_SELECT, R_Button_START);
     }
@@ -330,6 +374,14 @@ void setup() {
     joystickReaderL.setOffset(offsetL_X, offsetL_Y);
     joystickReaderR.setOffset(offsetR_X, offsetR_Y);
 
+    // Mutexy przed ESP-NOW — patrz komentarz przy register_recv_cb.
+    messageMutex   = xSemaphoreCreateMutex();
+    telemetryMutex = xSemaphoreCreateMutex();
+    if (messageMutex == NULL || telemetryMutex == NULL) {
+        Serial.println("Failed to create mutex!");
+        while (1) delay(100);
+    }
+
     // Initialize ESP-NOW communication
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
@@ -338,6 +390,8 @@ void setup() {
         return;
     }
     esp_now_register_send_cb(OnDataSent);
+    // Rejestracja callbacku odbioru MUSI nastąpić po utworzeniu muteksów:
+    // task WiFi może wywołać OnDataRecv natychmiast, gdy setup() jeszcze trwa.
     esp_now_register_recv_cb(OnDataRecv);
 
     // Add debug monitor peer
@@ -355,13 +409,6 @@ void setup() {
     if (esp_now_add_peer(&peerInfo) != ESP_OK) {
         Serial.println("Failed to add peer (platform)");
         return;
-    }
-
-    // Create mutex to protect shared message structure
-    messageMutex = xSemaphoreCreateMutex();
-    if (messageMutex == NULL) {
-        Serial.println("Failed to create mutex!");
-        while (1) delay(100);
     }
 
     // Create FreeRTOS tasks

@@ -19,8 +19,9 @@ pokazuje nie tylko własny stan, ale też telemetrię odebraną z platformy.
 
 Konsekwencje dla tego repo:
 
-- Pad odbiera już `MSG_HELLO` i **liczy** przychodzące ramki telemetrii, ale
-  jeszcze ich nie wyświetla — od tego jest `DisplayManager` i osobny krok.
+- Pad odbiera `MSG_HELLO` i telemetrię z platformy. Z telemetrii rysuje na
+  razie **kropkę echa** w pierścieniach drążków; reszta pól czeka na
+  zagospodarowanie.
 - `macMonitorDebug`, wysyłka do monitora w `TaskESPNow` oraz liczniki
   `ESP_NOW_Monitor_*` w `errors.h` są przeznaczone do usunięcia, nie do rozwijania.
 
