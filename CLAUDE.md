@@ -22,10 +22,9 @@ Konsekwencje dla tego repo:
 - Pad odbiera `MSG_HELLO` i telemetrię z platformy. Z telemetrii rysuje na
   razie **kropkę echa** w pierścieniach drążków; reszta pól czeka na
   zagospodarowanie.
-- Wysyłka do monitora i jego peer zostały usunięte: unicast bez odbiorcy
-  powodował ponawianie transmisji przez warstwę MAC tuż przed ramką do
-  platformy. Liczniki `ESP_NOW_Monitor_*` w `errors.h` są już nieużywane
-  i czekają na usunięcie.
+- Ślady po monitorze zostały usunięte w całości: wysyłka, peer, liczniki
+  `ESP_NOW_Monitor_*` i adres w szablonie MAC. Platforma jest jedynym
+  partnerem Pada.
 
 ## Niezmiennik: `src/messages.h` musi być identyczny z kopią w repo platformy
 
@@ -66,12 +65,6 @@ Docelowa forma sprzężenia zwrotnego z platformy jest graficzna, nie tekstowa:
 kropka odesłanych osi w pierścieniu drążka, a w przyszłości wektor kierunku
 i przyspieszenia — zadany z drążka i odesłany z platformy, obok siebie. Przy
 mecanum ma to sens szczególny, bo jazda bokiem jest pełnoprawnym kierunkiem.
-
-## Nazewnictwo adresów MAC
-
-Szablon `src/mac_addresses.h` w tym repo nazywa adres Pada `macModulXiao`,
-a platforma w swoim kodzie oczekuje `macPadXiao`. To ten sam fizyczny układ pod
-dwiema nazwami — warto zgrać przy okazji porządkowania protokołu.
 
 ## MAC-y i budowanie
 

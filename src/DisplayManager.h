@@ -8,7 +8,6 @@ private:
     TFT_eSPI tft;
     TFT_eSprite spriteJoystick_L;   // sprite for left joystick display
     TFT_eSprite spriteJoystick_R;   // sprite for right joystick display
-    TFT_eSprite spriteMessages;     // sprite for displaying ESP-NOW messages
     TFT_eSprite spriteStatus;       // sprite for displaying status/debug info
     TFT_eSprite spriteButtons_L;    // sprite for left gamepad buttons
     TFT_eSprite spriteButtons_R;    // sprite for right gamepad buttons
@@ -33,7 +32,6 @@ public:
     /// Jedna linia stanu łącza w wolnym pasie między ramkami joysticków
     /// a przyciskami. Nie dotyka żadnego innego sprite'a.
     void updateLinkStatus(const char* text, uint16_t color);
-    void showMessage(const char* message);
     void updateButtonsL(bool L_Button_A, bool L_Button_B, bool L_Button_X,
                         bool L_Button_Y, bool L_Button_SELECT, bool L_Button_START);
     void updateButtonsR(bool R_Button_A, bool R_Button_B, bool R_Button_X,

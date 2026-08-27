@@ -3,7 +3,7 @@
 DisplayManager::DisplayManager()
     : tft(), 
       spriteJoystick_L(&tft), spriteJoystick_R(&tft),
-      spriteMessages(&tft), spriteStatus(&tft),
+      spriteStatus(&tft),
       spriteButtons_L(&tft), spriteButtons_R(&tft),
       lastLx(-1), lastLy(-1), lastRx(-1), lastRy(-1),
       lastElx(-1), lastEly(-1), lastErx(-1), lastEry(-1), lastEchoValid(false),
@@ -24,14 +24,12 @@ void DisplayManager::begin() {
 
     spriteJoystick_L.createSprite(64, 64);
     spriteJoystick_R.createSprite(64, 64);
-    spriteMessages.createSprite(128, 30);
     spriteStatus.createSprite(128, 24);
     spriteButtons_L.createSprite(64, 70);
     spriteButtons_R.createSprite(64, 70);
 
     spriteJoystick_L.fillScreen(TFT_BLACK);
     spriteJoystick_R.fillScreen(TFT_BLACK);
-    spriteMessages.fillScreen(TFT_BLACK);
     spriteStatus.fillScreen(TFT_BLACK);
     spriteButtons_L.fillScreen(TFT_BLACK);
     spriteButtons_R.fillScreen(TFT_BLACK);
@@ -82,15 +80,6 @@ void DisplayManager::updateLinkStatus(const char* text, uint16_t color) {
     spriteStatus.setTextSize(1);
     spriteStatus.print(text);
     spriteStatus.pushSprite(0, 65);
-}
-
-void DisplayManager::showMessage(const char* message) {
-    spriteMessages.setCursor(0, 3);
-    spriteMessages.fillScreen(TFT_BLACK);
-    spriteMessages.setTextColor(TFT_YELLOW);
-    spriteMessages.setTextSize(1);
-    spriteMessages.println(message);
-    spriteMessages.pushSprite(0, 96);
 }
 
 void DisplayManager::updateButtonsL(bool A, bool B, bool X, bool Y, bool Select, bool Start) {

@@ -31,7 +31,6 @@ Msg_PadControl message; // Global message structure from pad
 static volatile uint8_t  platProtoVersion = 0;      // wersja ogłoszona przez platformę
 static volatile bool     platSeen         = false;  // widziano jakiekolwiek HELLO
 static volatile bool     platProtoOk      = false;  // ...i wersja się zgadza
-static volatile uint32_t platHelloCount   = 0;
 static volatile uint32_t lastPlatHelloMs  = 0;  // millis() ostatniego HELLO
 
 // ---- Ostatnia odebrana telemetria ----
@@ -67,7 +66,6 @@ constexpr uint32_t LINK_BANNER_MS = 4000;
 // jedynym sygnałem od platformy są HELLO co 5 s. Gdy telemetria zacznie
 // docierać do Pada (20 Hz), wykrywanie zejdzie do ułamka sekundy.
 constexpr uint32_t PLAT_HELLO_TIMEOUT_MS = 15000;
-static volatile uint32_t telemetryCount   = 0;
 static volatile uint32_t protoErrorCount  = 0;      // ramki nieznanego typu/długości
 static volatile uint8_t  lastUnknownType  = 0;
 static volatile int      lastUnknownLen   = 0;
@@ -108,7 +106,6 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
         platProtoVersion = hello.protoVersion;
         platSeen         = true;
         platProtoOk      = (hello.protoVersion == PROTO_VERSION);
-        platHelloCount++;
         lastPlatHelloMs  = millis();
         if (platProtoOk && handshakeAtMs == 0) handshakeAtMs = millis();
         return;
@@ -119,7 +116,6 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
         if (telemetryMutex && xSemaphoreTake(telemetryMutex, 0) == pdTRUE) {
             memcpy(&lastTelemetry, incomingData, sizeof(Msg_Telemetry));
             lastTelemetryMs = millis();
-            telemetryCount++;
             // Luki w numeracji = ramki telemetrii zgubione po drodze.
             if (telemEverSeen && lastTelemetry.seq > telemSeqLast + 1) {
                 telemMissCount += lastTelemetry.seq - telemSeqLast - 1;

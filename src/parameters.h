@@ -34,14 +34,6 @@ extern volatile int offsetR_Y;
 extern SemaphoreHandle_t messageMutex;
 
 extern volatile uint32_t totalMessages;
-extern volatile uint32_t failedMessages;
-extern volatile uint32_t lastFailedCount;
-extern volatile uint32_t failedPerSecond;
-extern volatile int consecutiveFailures;
-extern volatile int espNowStatus;
-
-extern volatile TickType_t lastHeartbeatTimeMonitor;
-extern volatile TickType_t lastHeartbeatTimePlatform;
 
 // ====== ESP-NOW configuration ======
 extern esp_now_peer_info_t peerInfo;
