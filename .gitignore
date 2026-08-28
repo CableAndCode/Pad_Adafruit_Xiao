@@ -13,7 +13,10 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
-mac_addresses_private.h
+# Anything with "private" in the name stays local. A specific filename does not
+# protect against a typo, and a typo has already happened once: a file called
+# mac_adersses_private.cpp slipped into the history carrying real MAC addresses.
+*private*
 
 lib/
 test/

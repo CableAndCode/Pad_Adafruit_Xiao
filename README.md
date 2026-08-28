@@ -13,7 +13,7 @@ reads two analogue joysticks through Adafruit Seesaw modules (I2C) and draws
 live data on a 1.8" ST7735 TFT using TFT_eSPI. Everything runs under FreeRTOS.
 
 It sends control frames to a mecanum-wheel robot platform
-([ESP32S3_Mecanum_Base](https://github.com/PiotrSabat/ESP32S3_Mecanum_Base)) and
+([ESP32S3_Mecanum_Base](https://github.com/CableAndCode/ESP32S3_Mecanum_Base)) and
 **doubles as the system's diagnostic display** — telemetry coming back from the
 platform is shown on the pad's own screen, so no separate monitor device is
 needed.
