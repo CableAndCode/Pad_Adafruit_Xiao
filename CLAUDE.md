@@ -101,8 +101,33 @@ Konfiguracja TFT_eSPI (sterownik, piny, prędkość SPI, fonty) siedzi w
 Ostrzeżenie o `TOUCH_CS` podczas budowania jest oczekiwane: użyty panel ST7735
 nie ma warstwy dotykowej.
 
+W `.gitignore` obowiązuje wzorzec `*private*`, a nie konkretna nazwa — konkretna
+nazwa nie chroni przed literówką.
+
+Wersja platformy jest **przypięta**: `espressif32 @ ~7.0.1`, identycznie jak
+w repo platformy. Powód leży po tamtej stronie (core 3.x usunął API używane
+przez `Motor.cpp`), ale wersje trzymamy zgodne, żeby oba urządzenia budowały
+się tym samym łańcuchem.
+
+`monitor_speed = 115200` jest w `platformio.ini` celowo: kod woła
+`Serial.begin(115200)`, a bez tej linii `pio device monitor` staje na 9600
+i pokazuje krzaki. Przy diagnostyce startu to różnica między odczytaniem
+komunikatu a jego brakiem.
+
 Budowanie: `pio run` (środowisko `seeed_xiao_esp32s3`). Każdy push i pull request
 jest sprawdzany przez GitHub Actions (`.github/workflows/build.yml`).
+
+## Biały ekran po wgraniu
+
+Zdarzyło się 2026-08-28 i kosztowało kilka godzin szukania błędu w kodzie,
+którego tam nie było. **Najpierw powtórz wgranie i zresetuj płytkę.**
+
+Objawy potrafią złożyć się w bardzo przekonującą historię o awarii: ekran
+biały (nie czarny, czyli panel bez inicjalizacji), port USB cyklicznie znika
+i wraca, Serial milczy mimo poprawnego `ARDUINO_USB_CDC_ON_BOOT=1`, i to samo
+dzieje się na **nowym** Xiao. Wszystko to były skutki jednej niedokończonej
+transmisji. Dopiero gdy powtórzony flash nie pomoże — kabel USB i port, potem
+kod.
 
 ## Jak weryfikować zmiany
 
