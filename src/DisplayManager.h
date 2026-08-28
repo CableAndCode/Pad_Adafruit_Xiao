@@ -63,8 +63,14 @@ public:
 
     /// RTT is deliberately absent here — it lives in the status bar, where it
     /// is visible on every screen.
+    ///
+    /// Loss is shown for BOTH directions, because they fail independently:
+    /// telemLossPermille is what this pad missed coming down, padLossPermille
+    /// is what the platform reports missing on the way up. An asymmetric link
+    /// is the interesting case and a single number hides it.
     void panelLink(unsigned rangePercent, unsigned ackLossPercent,
-                   unsigned telemLossPermille, uint32_t protoErrors);
+                   unsigned telemLossPermille, unsigned padLossPermille,
+                   uint32_t protoErrors, bool platProtoError);
 
     /// Full-screen radar: travel vectors and rotation arcs.
     void panelRadar(float tvx, float tvy, float tw,

@@ -290,7 +290,11 @@ static unsigned telemLossPermille = 0;
 
 // Status bar: warnings take priority, and when everything is fine it shows what
 // changes while driving — the round trip and the frame loss.
-static void drawLinkStatusLine(uint32_t rttMs, int y) {
+//
+// telFlags carries the platform's own view of itself (TFLAG_*). It is only
+// trusted while the telemetry is fresh — a stale frame must not keep showing a
+// failsafe that has long since cleared.
+static void drawLinkStatusLine(uint32_t rttMs, uint16_t telFlags, int y) {
     char text[24];
     uint16_t color = TFT_GREEN;
     uint32_t nowMs = millis();
@@ -323,6 +327,13 @@ static void drawLinkStatusLine(uint32_t rttMs, int y) {
     } else if (!telemEverSeen &&
                (nowMs - lastPlatHelloMs) > PLAT_HELLO_TIMEOUT_MS) {
         snprintf(text, sizeof(text), "PLAT ZGUBIONA");
+        color = TFT_RED;
+    } else if (echoFresh && (telFlags & TFLAG_FAILSAFE)) {
+        // The platform cut its drive because IT cannot hear US. This is not the
+        // same state as "we cannot hear the platform" above, and until now the
+        // pad could not tell them apart: on an asymmetric link the pad happily
+        // showed a healthy RTT while the robot refused to move.
+        snprintf(text, sizeof(text), "NAPED ODCIETY");
         color = TFT_RED;
     } else if ((nowMs - handshakeAtMs) < LINK_BANNER_MS) {
         snprintf(text, sizeof(text), "PLAT v%u  OK", (unsigned)platProtoVersion);
@@ -445,7 +456,7 @@ void TaskTFTScreen(void *pvParameters) {
         // filling the rest. Stick rings are redundant there — the radar proves
         // the same thing and more.
         const bool radarLayout = (currentScreen == SCR_DRIVE);
-        drawLinkStatusLine(rtt, radarLayout ? 0 : 65);
+        drawLinkStatusLine(rtt, tel.flags, radarLayout ? 0 : 65);
         if (!radarLayout) {
             display.updateJoystick(lx, ly, rx, ry, echoValid,
                                    tel.echoAxisLX, tel.echoAxisLY,
@@ -475,7 +486,10 @@ void TaskTFTScreen(void *pvParameters) {
         case SCR_LINK: {
             unsigned ackLoss = (unsigned)ackFailCount * 100u / ACK_WINDOW;
             display.panelLink(rangeFromLoss(ackLoss), ackLoss,
-                              telemLossPermille, protoErrorCount);
+                              telemLossPermille,
+                              echoValid ? tel.padLossPermille : 0,
+                              protoErrorCount,
+                              echoValid && (tel.flags & TFLAG_PROTO_ERROR));
             break;
         }
         case SCR_BUTTONS:

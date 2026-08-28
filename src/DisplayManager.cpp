@@ -283,8 +283,10 @@ void DisplayManager::panelWheels(const WheelRow rows[4]) {
 }
 
 void DisplayManager::panelLink(unsigned rangePercent, unsigned ackLossPercent,
-                               unsigned telemLossPermille, uint32_t protoErrors) {
-    uint32_t sig[4] = { rangePercent, ackLossPercent, telemLossPermille, protoErrors };
+                               unsigned telemLossPermille, unsigned padLossPermille,
+                               uint32_t protoErrors, bool platProtoError) {
+    uint32_t sig[6] = { rangePercent, ackLossPercent, telemLossPermille,
+                        padLossPermille, protoErrors, (uint32_t)platProtoError };
     if (!panelChanged(4, sig, sizeof(sig))) return;
 
     spriteLower.fillSprite(TFT_BLACK);
@@ -307,12 +309,23 @@ void DisplayManager::panelLink(unsigned rangePercent, unsigned ackLossPercent,
     spriteLower.setTextColor(TFT_WHITE);
     spriteLower.setCursor(0, 18);
     spriteLower.printf("bez ACK  %u%% ze 100", ackLossPercent);
+    // Two directions, two rows. The arrow points the way the frames travelled:
+    // "<-" is telemetry this pad missed, "->" is what the platform says it
+    // missed from us. Losing only one direction is common and diagnostic.
     spriteLower.setCursor(0, 32);
     spriteLower.setTextColor(telemLossPermille ? TFT_YELLOW : TFT_WHITE);
-    spriteLower.printf("strata   %u/1000", telemLossPermille);
+    spriteLower.printf("strata <- %u/1000", telemLossPermille);
     spriteLower.setCursor(0, 46);
-    spriteLower.setTextColor(protoErrors ? TFT_RED : TFT_WHITE);
-    spriteLower.printf("bledy    %lu", (unsigned long)protoErrors);
+    spriteLower.setTextColor(padLossPermille ? TFT_YELLOW : TFT_WHITE);
+    spriteLower.printf("strata -> %u/1000", padLossPermille);
+
+    // Own error count, plus a marker when the PLATFORM reports having received
+    // something it could not parse. That flag latches on the platform, so it
+    // belongs here rather than in the status bar, where it would sit forever.
+    spriteLower.setCursor(0, 60);
+    spriteLower.setTextColor((protoErrors || platProtoError) ? TFT_RED : TFT_WHITE);
+    spriteLower.printf("bledy    %lu%s", (unsigned long)protoErrors,
+                       platProtoError ? " +PLAT" : "");
 
     spriteLower.pushSprite(0, LOWER_Y);
 }
