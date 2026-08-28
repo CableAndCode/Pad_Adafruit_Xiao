@@ -4,27 +4,26 @@
 #include <TFT_eSPI.h>
 #include "messages.h"
 
-// The screen has TWO layouts.
+// Ekran ma DWA układy.
 //
-// Standard layout (wheels, link, buttons):
-//   y   0..63   stick rings with their echo dots
-//   y  65..88   link status bar
-//   y  90..159  lower panel — contents depend on the selected screen
+// Układ zwykły (koła, łącze, przyciski):
+//   y   0..63   pierścienie drążków z kropkami echa
+//   y  65..88   pas stanu łącza
+//   y  90..159  panel dolny — treść zależna od wybranego ekranu
 //
-// Radar layout (the drive screen):
-//   y   0..23   link status bar
-//   y  24..159  radar filling everything else
+// Układ radaru (ekran jazdy):
+//   y   0..23   pas stanu łącza
+//   y  24..159  radar na całą resztę
 //
-// The stick rings are dropped on the radar screen on purpose: the echo dot
-// proved that the platform was reading the right fields, and the radar proves
-// MORE — it is drawn from wheel revolutions, so it confirms the whole path
-// including the kinematics and the controller.
+// Na radarze pierścienie drążków są zbędne: kropka echa dowodziła, że platforma
+// czyta właściwe pola, a radar dowodzi WIĘCEJ — rysuje się z obrotów kół, więc
+// potwierdza całą drogę razem z kinematyką i regulatorem.
 //
-// The lower panel is ONE sprite shared by every view. The two former button
-// sprites (64x70 each) took exactly as much memory as one 128x70, so merging
-// them freed nothing by itself — the point is different: every new screen draws
-// into the same buffer instead of allocating its own. Three additional panels
-// in separate sprites would have cost over 50 kB.
+// Panel dolny to JEDEN sprite współdzielony przez wszystkie widoki. Dwa dawne
+// sprite'y przycisków (64x70 każdy) zajmowały dokładnie tyle samo pamięci co
+// jeden 128x70, więc samo złożenie ich niczego nie zwolniło — sens jest inny:
+// każdy kolejny ekran rysuje się w tym samym buforze zamiast alokować własny.
+// Trzy nowe panele w osobnych sprite'ach kosztowałyby ponad 50 kB.
 constexpr int LOWER_Y = 90;
 constexpr int LOWER_W = 128;
 constexpr int LOWER_H = 70;
@@ -34,9 +33,9 @@ constexpr int RADAR_W = 128;
 constexpr int RADAR_H = 136;
 
 struct WheelRow {
-    int16_t target;    ///< 0.1 RPM, robot convention
-    int16_t measured;  ///< 0.1 RPM, robot convention
-    int16_t pwm;       ///< controller output, PWM units
+    int16_t target;    // 0,1 RPM, konwencja robota
+    int16_t measured;
+    int16_t pwm;
 };
 
 class DisplayManager {
@@ -44,40 +43,32 @@ public:
     DisplayManager();
     void begin();
 
-    /// Splash screen — drawn straight to the display, without sprites.
+    /// Ekran powitalny — rysowany prosto na ekran, bez sprite'ów.
     void showSplash(uint8_t protoVersion, uint32_t buildId, const char* statusLine);
 
-    /// Clears the whole screen (used when leaving the splash or switching views).
-    void clearAll();
+    void clearAll();     ///< czyści cały ekran (wyjście ze splasha)
 
-    /// Forces a full redraw on the next call to every panel.
+    /// Wymusza przerysowanie wszystkiego (po zejściu ze splasha lub zmianie ekranu).
     void invalidate();
 
     void updateJoystick(int lx, int ly, int rx, int ry,
                         bool echoValid, int elx, int ely, int erx, int ery);
     void updateLinkStatus(const char* text, uint16_t color, int y);
 
-    // --- Lower panels; each redraws only when its data changed ---
+    // --- panele dolne, każdy rysuje tylko przy zmianie danych ---
     void panelButtons(const bool L[6], const bool R[6]);
     void panelWheels(const WheelRow rows[4]);
 
-    /// RTT is deliberately absent here — it lives in the status bar, where it
-    /// is visible on every screen.
-    ///
-    /// Loss is shown for BOTH directions, because they fail independently:
-    /// telemLossPermille is what this pad missed coming down, padLossPermille
-    /// is what the platform reports missing on the way up. An asymmetric link
-    /// is the interesting case and a single number hides it.
+    /// RTT nie wraca tutaj — jest w pasie stanu, widoczny na każdym ekranie.
     void panelLink(unsigned rangePercent, unsigned ackLossPercent,
-                   unsigned telemLossPermille, unsigned padLossPermille,
-                   uint32_t protoErrors, bool platProtoError);
+                   unsigned telemLossPermille, uint32_t protoErrors);
 
-    /// Full-screen radar: travel vectors and rotation arcs.
+    /// Radar na pełny ekran: wektory jazdy i łuki obrotu.
     void panelRadar(float tvx, float tvy, float tw,
                     float mvx, float mvy, float mw, bool valid);
 
 private:
-    TFT_eSPI    tft;
+    TFT_eSPI tft;
     TFT_eSprite spriteJoystick_L;
     TFT_eSprite spriteJoystick_R;
     TFT_eSprite spriteStatus;
@@ -88,8 +79,8 @@ private:
     int  lastElx, lastEly, lastErx, lastEry;
     bool lastEchoValid;
 
-    // Panel signatures — compared byte for byte, so the lower half of the
-    // screen is not redrawn without reason.
+    // Sygnatury paneli — porównywane bajt w bajt, żeby nie przerysowywać
+    // dolnej połowy ekranu bez powodu.
     uint8_t lastPanelId;
     uint8_t lastPanelData[32];
 
