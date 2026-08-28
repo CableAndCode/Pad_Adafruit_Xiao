@@ -68,8 +68,8 @@ bo platformy nie obchodzi, na co patrzy operator. SELECT lewego pada przewija
 w przód, prawego w tył. **START jest celowo wolny** — zarezerwowany pod przyszły
 przycisk awaryjny, który nie może kolidować z nawigacją.
 
-Tempo: drążki 50 Hz, wysyłka 50 Hz, telemetria z platformy 50 Hz, rysowanie
-50 Hz. Te okresy muszą pozostać **zbliżone**. Gdy wysyłka, telemetria
+Tempo: drążki 50 Hz, wysyłka 50 Hz, telemetria z platformy 25 Hz (odpowiedź
+na co drugą ramkę), rysowanie 50 Hz. Te okresy muszą pozostać **zbliżone**. Gdy wysyłka, telemetria
 i rysowanie chodziły po 20 Hz, trzy niezsynchronizowane okresy 50 ms dawały
 odstępy między aktualizacjami kropki od 0 do 100 ms — kropka szarpała mimo
 zdrowego łącza i zerowych strat. Spowolnienie któregokolwiek z tych zadań
@@ -79,6 +79,16 @@ Docelowa forma sprzężenia zwrotnego z platformy jest graficzna, nie tekstowa:
 kropka odesłanych osi w pierścieniu drążka, a w przyszłości wektor kierunku
 i przyspieszenia — zadany z drążka i odesłany z platformy, obok siebie. Przy
 mecanum ma to sens szczególny, bo jazda bokiem jest pełnoprawnym kierunkiem.
+
+## Język: kod po angielsku, ten plik po polsku
+
+Komentarze w `src/`, README i `docs/` są **po angielsku** — repo jest publiczne.
+Ten plik zostaje po polsku, bo jest roboczy. **Napisy na wyświetlaczu też
+zostają po polsku** i to jest decyzja, nie przeoczenie: to interfejs operatora,
+dopasowany do 128 pikseli szerokości. Nie ujednolicaj tego w żadną stronę bez
+pytania.
+
+Ściągawka do gamepadów: [docs/gamepad-qt.md](docs/gamepad-qt.md).
 
 ## MAC-y i budowanie
 

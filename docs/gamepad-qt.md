@@ -1,60 +1,60 @@
 # Adafruit Mini I2C STEMMA QT Gamepad (PID 5743)
 
-Ściągawka sprzętowa dla dwóch gamepadów użytych w Padzie. Spisana z
-dokumentacji Adafruita 2026-08-26, żeby nie zgadywać i nie szukać za każdym
-razem. Źródła na końcu.
+A hardware cheat sheet for the two gamepads used in the pad. Compiled from
+Adafruit's documentation on 2026-08-26, so nothing here has to be guessed or
+looked up twice. Sources at the end.
 
-## Numeracja pinów seesaw
+## Seesaw pin numbering
 
-Kontroler seesaw (ATtiny817) wystawia własne numery pinów — **nie** są to piny
-ESP32 i nie są ciągłe:
+The seesaw controller (an ATtiny817) exposes its own pin numbers — these are
+**not** ESP32 pins, and they are not contiguous:
 
-| funkcja | pin seesaw |
+| function | seesaw pin |
 |---|---|
-| przycisk A | 5 |
-| przycisk B | 1 |
-| przycisk X | 6 |
-| przycisk Y | 2 |
+| button A | 5 |
+| button B | 1 |
+| button X | 6 |
+| button Y | 2 |
 | SELECT | 0 |
 | START | 16 |
-| joystick oś X | 14 (`analogRead`) |
-| joystick oś Y | 15 (`analogRead`) |
+| joystick X axis | 14 (`analogRead`) |
+| joystick Y axis | 15 (`analogRead`) |
 
-Sześć przycisków na sztukę, więc przy dwóch gamepadach **dwanaście** stanów do
-przesłania. Numery są rzadkie (0,1,2,5,6,16) — najwyższy bit to 16, dlatego kod
-trzyma je w `uint32_t`. Do wysyłki w eter warto je przepakować gęsto:
-dwanaście bitów mieści się w `uint16_t` z czterema wolnymi.
+Six buttons each, so two gamepads mean **twelve** states to transmit. The
+numbers are sparse (0, 1, 2, 5, 6, 16) — the highest bit is 16, which is why the
+code holds them in a `uint32_t`. For transmission they are worth repacking
+densely: twelve bits fit in a `uint16_t` with four to spare.
 
-## Poziomy i zakresy
+## Levels and ranges
 
-- Przyciski są **aktywne stanem niskim**: konfiguracja `INPUT_PULLUP`, wciśnięty
-  = bit 0. Stąd negacja w kodzie: `!(buttons & (1UL << BUTTON_A))`.
-- Joystick: ADC **10-bitowy**, zakres `0..1023`. Przykład Adafruita odwraca oś
-  (`1023 - analogRead(14)`), żeby zgadzała się z orientacją drążka.
-- Zasilanie: tym samym napięciem, co logika mikrokontrolera — tutaj 3,3 V.
+- The buttons are **active low**: configured `INPUT_PULLUP`, pressed = bit 0.
+  Hence the negation in the code: `!(buttons & (1UL << BUTTON_A))`.
+- Joystick: a **10-bit** ADC, range `0..1023`. Adafruit's example inverts the
+  axis (`1023 - analogRead(14)`) so it matches the stick's orientation.
+- Power: the same voltage as the microcontroller's logic — 3.3 V here.
 
-## Adresy I2C
+## I2C addresses
 
-Domyślnie `0x50`. Zworki adresowe (przecięcie ścieżki):
+`0x50` by default. Address jumpers (cut the trace):
 
-| zworki | adres |
+| jumpers | address |
 |---|---|
-| brak (fabrycznie) | 0x50 |
-| przecięta A0 | 0x51 |
-| przecięta A1 | 0x52 |
-| przecięte A0 i A1 | 0x53 |
+| none (as shipped) | 0x50 |
+| A0 cut | 0x51 |
+| A1 cut | 0x52 |
+| A0 and A1 cut | 0x53 |
 
-W Padzie: lewy `GAMEPAD1_ADDR = 0x50`, prawy `GAMEPAD2_ADDR = 0x51` (czyli
-w prawym przecięta A0). Magistrala: `Wire.begin(5, 6)` — SDA 5, SCL 6.
+In this pad: left `GAMEPAD1_ADDR = 0x50`, right `GAMEPAD2_ADDR = 0x51` (so A0 is
+cut on the right-hand one). Bus: `Wire.begin(5, 6)` — SDA 5, SCL 6.
 
-## Czego nasz kod nie robi, a przykład Adafruita robi
+## What our code does not do, and Adafruit's example does
 
-Przykład sprawdza po `ss.getVersion()`, czy pod adresem siedzi układ o product
-ID **5743**. Nasz `setup()` sprawdza tylko, czy `begin()` się powiodło — a to
-przejdzie także dla innego układu seesaw pod tym samym adresem. Tanie
-zabezpieczenie przed pomyleniem płytek.
+The example uses `ss.getVersion()` to check that the device at the address is
+really product ID **5743**. Our `setup()` only checks that `begin()` succeeded,
+which would also pass for a different seesaw device at the same address. A cheap
+guard against mixing up boards.
 
-## Źródła
+## Sources
 
 - https://learn.adafruit.com/gamepad-qt/pinouts
 - https://learn.adafruit.com/gamepad-qt/arduino
