@@ -100,6 +100,12 @@ static uint16_t packButtons(uint32_t rawL, uint32_t rawR) {
 // Receive callback. Dispatch is on the first byte, with the length used as
 // validation (see the header of messages.h).
 void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+    // Only the platform may talk to us. ESP-NOW raises the receive callback for
+    // ANY sender on the channel — registering a peer governs sending, not
+    // receiving. OnDataSent already filters this way; the receive path did not,
+    // which meant a foreign device could have fed this pad telemetry.
+    if (mac == nullptr || memcmp(mac, macPlatformMecanum, 6) != 0) return;
+
     if (len < 1) return;
     const uint8_t type = incomingData[0];
 
