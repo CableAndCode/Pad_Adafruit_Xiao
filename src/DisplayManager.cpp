@@ -17,9 +17,10 @@ void DisplayManager::begin() {
     tft.setRotation(0);
     tft.fillScreen(TFT_BLACK);
 
-    // createSprite przy braku pamięci zwraca nullptr i NIE zgłasza błędu —
-    // sprite po prostu przestaje cokolwiek rysować. Bez tej kontroli byłaby to
-    // paskudna usterka do znalezienia: pusty prostokąt i żadnego śladu w logu.
+    // createSprite returns nullptr when it runs out of memory and reports NO
+    // error — the sprite simply stops drawing anything. Without this check that
+    // would be a nasty fault to track down: an empty rectangle and no trace in
+    // any log.
     void* buffers[5] = {
         spriteJoystick_L.createSprite(64, 64),
         spriteJoystick_R.createSprite(64, 64),
@@ -29,7 +30,7 @@ void DisplayManager::begin() {
     };
     for (int i = 0; i < 5; i++) {
         if (buffers[i] == nullptr) {
-            Serial.printf("Brak pamieci na sprite %d!\n", i);
+            Serial.printf("Out of memory for sprite %d!\n", i);
         }
     }
 
@@ -95,9 +96,9 @@ void DisplayManager::fillDiamond(TFT_eSprite& sprite, int cx, int cy, int size,
     sprite.fillTriangle(cx, cy + size, cx + size, cy, cx - size, cy, color);
 }
 
-// Kropka echa: pozycja osi ODESŁANYCH przez platformę, w tym samym układzie co
-// pierścień drążka. W środku = łącze żyje i nadąża, wleczona = opóźnienie,
-// skacząca = straty. Brak kropki = telemetria nie dociera.
+// The echo dot: the position of the axes SENT BACK by the platform, drawn in
+// the same frame as the stick ring. Centred = the link is alive and keeping up,
+// trailing = latency, jumping = losses. No dot = no telemetry arriving.
 void DisplayManager::updateJoystick(int lx, int ly, int rx, int ry,
                                     bool echoValid, int elx, int ely, int erx, int ery) {
     if (lx == lastLx && ly == lastLy && rx == lastRx && ry == lastRy &&
@@ -124,8 +125,8 @@ void DisplayManager::updateJoystick(int lx, int ly, int rx, int ry,
     lastEchoValid = echoValid;
 }
 
-// Pas y = 65..88 jest wolny: pierścienie kończą się na 63, panel dolny
-// zaczyna na 90.
+// The band at y = 65..88 is free: the rings end at 63 and the lower panel
+// starts at 90. On the radar layout the same sprite is pushed to y = 0.
 void DisplayManager::updateLinkStatus(const char* text, uint16_t color, int y) {
     spriteStatus.fillSprite(TFT_BLACK);
     spriteStatus.setCursor(2, 4);
@@ -135,24 +136,24 @@ void DisplayManager::updateLinkStatus(const char* text, uint16_t color, int y) {
     spriteStatus.pushSprite(0, y);
 }
 
-// --- Ekran przycisków: dokładnie to samo rozmieszczenie co wcześniej, tylko
-// narysowane w jednym wspólnym sprite'cie zamiast w dwóch osobnych.
+// --- Button screen: purely a check that every button reports. Not needed while
+// driving, which is why it lives on a screen of its own.
 void DisplayManager::panelButtons(const bool L[6], const bool R[6]) {
     uint8_t sig[12];
     for (int i = 0; i < 6; i++) { sig[i] = L[i]; sig[i + 6] = R[i]; }
     if (!panelChanged(1, sig, sizeof(sig))) return;
 
     spriteLower.fillSprite(TFT_BLACK);
-    // kolejność w tablicach: A, B, X, Y, SELECT, START
+    // array order: A, B, X, Y, SELECT, START
     const int xoff[2] = { 0, 65 };
     const bool* src[2] = { L, R };
     for (int s = 0; s < 2; s++) {
         const bool* b = src[s];
         int x = xoff[s];
-        fillDiamond(spriteLower, x + 32, 15, 6, b[3] ? TFT_RED : TFT_WHITE); // Y góra
-        fillDiamond(spriteLower, x + 20, 27, 6, b[2] ? TFT_RED : TFT_WHITE); // X lewo
-        fillDiamond(spriteLower, x + 44, 27, 6, b[1] ? TFT_RED : TFT_WHITE); // B prawo
-        fillDiamond(spriteLower, x + 32, 39, 6, b[0] ? TFT_RED : TFT_WHITE); // A dół
+        fillDiamond(spriteLower, x + 32, 15, 6, b[3] ? TFT_RED : TFT_WHITE); // Y, top
+        fillDiamond(spriteLower, x + 20, 27, 6, b[2] ? TFT_RED : TFT_WHITE); // X, left
+        fillDiamond(spriteLower, x + 44, 27, 6, b[1] ? TFT_RED : TFT_WHITE); // B, right
+        fillDiamond(spriteLower, x + 32, 39, 6, b[0] ? TFT_RED : TFT_WHITE); // A, bottom
         spriteLower.fillRect(x +  0, 55, 20, 10, b[4] ? TFT_RED : TFT_WHITE); // SELECT
         spriteLower.fillRect(x + 44, 55, 20, 10, b[5] ? TFT_RED : TFT_WHITE); // START
     }
@@ -161,28 +162,29 @@ void DisplayManager::panelButtons(const bool L[6], const bool R[6]) {
 
 void DisplayManager::drawVector(TFT_eSprite& sp, int cx, int cy, int r,
                                 float vx, float vy, uint16_t color) {
-    // vy = do przodu = w górę ekranu (oś Y ekranu rośnie w dół).
+    // vy = forward = up the screen (the screen Y axis grows downwards).
     int ex = cx + (int)lroundf(vx * r);
     int ey = cy - (int)lroundf(vy * r);
     sp.drawLine(cx, cy, ex, ey, color);
     sp.fillCircle(ex, ey, 2, color);
 }
 
-// Obrót jako łuk wzdłuż obręczy: start od godziny 12, długość proporcjonalna
-// do prędkości obrotu, kierunek zgodny ze znakiem. Łuk NIE potrzebuje jednostki
-// — jest z natury względny, więc nie musimy udawać, że znamy stopnie na sekundę
-// (do tego brakuje rozstawu kół). Rysowany punkt po punkcie, bez polegania na
-// drawArc, którego nie ma w każdej wersji TFT_eSPI.
+// Rotation drawn as an arc along the rim: starting at twelve o'clock, length
+// proportional to the rotation rate, direction following the sign. The arc is
+// relative by nature — how close to the maximum, and which way — which is what
+// you read at a glance while driving; the figure in degrees per second is
+// printed separately. Drawn pixel by pixel rather than relying on drawArc,
+// which is not present in every version of TFT_eSPI.
 void DisplayManager::drawSpinArc(TFT_eSprite& sp, int cx, int cy, int r,
                                  float frac, uint16_t color) {
     if (frac > 1.0f)  frac = 1.0f;
     if (frac < -1.0f) frac = -1.0f;
-    const float sweep = frac * 300.0f;                 // maksymalnie 300 stopni
+    const float sweep = frac * 300.0f;                 // at most 300 degrees
     if (fabsf(sweep) < 2.0f) return;
 
     const int steps = (int)fabsf(sweep);
     for (int i = 0; i <= steps; i++) {
-        float a = (sweep >= 0 ? i : -i) - 90.0f;        // 0 stopni = godzina 12
+        float a = (sweep >= 0 ? i : -i) - 90.0f;        // 0 degrees = twelve o'clock
         float rad = a * 3.14159265f / 180.0f;
         int x = cx + (int)lroundf(cosf(rad) * r);
         int y = cy + (int)lroundf(sinf(rad) * r);
@@ -191,10 +193,12 @@ void DisplayManager::drawSpinArc(TFT_eSprite& sp, int cx, int cy, int r,
     }
 }
 
-// Radar: pełny ekran, wektor zadany (cyjan) i rzeczywisty (biały), a na obręczy
-// łuki obrotu w tych samych kolorach. Obwód okręgu odpowiada MAX_RPM, więc jeśli
-// biały wektor nigdy go nie dosięga przy pełnym wychyleniu drążka, to znaczy że
-// MAX_RPM = 180 jest wartością zawyżoną.
+// Radar: full screen, the commanded vector (cyan) and the actual one (white),
+// with rotation arcs in the same colours along the rim. The edge of the circle
+// is MAX_RPM, so a white vector that never reaches it at full stick deflection
+// means MAX_RPM is set too high. That is how the encoder scaling error was
+// caught: the white vector sat AT the rim while a stopwatch said the platform
+// was doing half that speed.
 void DisplayManager::panelRadar(float tvx, float tvy, float tw,
                                 float mvx, float mvy, float mw, bool valid) {
     int16_t sig[7] = { (int16_t)tvx, (int16_t)tvy, (int16_t)tw,
@@ -204,8 +208,8 @@ void DisplayManager::panelRadar(float tvx, float tvy, float tw,
     spriteRadar.fillSprite(TFT_BLACK);
     const int cx = 64, cy = 62, r = 54;
 
-    spriteRadar.drawCircle(cx, cy, r, TFT_BLUE);          // pełna prędkość
-    spriteRadar.drawCircle(cx, cy, r / 2, 0x18E3);        // połowa, przygaszona
+    spriteRadar.drawCircle(cx, cy, r, TFT_BLUE);          // full speed
+    spriteRadar.drawCircle(cx, cy, r / 2, 0x18E3);        // half speed, dimmed
     spriteRadar.drawFastHLine(cx - 4, cy, 9, TFT_DARKGREY);
     spriteRadar.drawFastVLine(cx, cy - 4, 9, TFT_DARKGREY);
 
@@ -222,9 +226,10 @@ void DisplayManager::panelRadar(float tvx, float tvy, float tw,
         spriteRadar.setCursor(18, 120);
         spriteRadar.printf("%4.2f m/s", rpm * RPM_TO_MPS);
 
-        // Obrót w stopniach na sekundę — teraz uczciwie, bo znamy rozstaw kół.
-        // Sam łuk zostaje: liczba mówi ile, łuk mówi w którą stronę i jak blisko
-        // maksimum, a to widać kątem oka bez czytania.
+        // Rotation in degrees per second — honest now that the track width is
+        // measured. The arc stays alongside it: the number says how much, the
+        // arc says which way and how close to the maximum, and that is readable
+        // out of the corner of an eye.
         spriteRadar.setTextSize(1);
         spriteRadar.setTextColor(TFT_CYAN);
         spriteRadar.setCursor(2, 2);
@@ -233,13 +238,13 @@ void DisplayManager::panelRadar(float tvx, float tvy, float tw,
         spriteRadar.setTextSize(2);
         spriteRadar.setTextColor(TFT_DARKGREY);
         spriteRadar.setCursor(24, 120);
-        spriteRadar.print("brak danych");
+        spriteRadar.print("no data");
     }
     spriteRadar.pushSprite(0, RADAR_Y);
 }
 
-// Ekran kół: dla każdego koła słupek zmierzonych obrotów i znacznik zadanych.
-// Rozjazd znacznika i słupka pokazuje, które koło nie nadąża.
+// Wheel screen: a bar of measured RPM per wheel with a marker for the commanded
+// value. A gap between marker and bar shows which wheel is not keeping up.
 void DisplayManager::panelWheels(const WheelRow rows[4]) {
     if (!panelChanged(3, rows, sizeof(WheelRow) * 4)) return;
 
@@ -267,8 +272,9 @@ void DisplayManager::panelWheels(const WheelRow rows[4]) {
         if (t < -barW / 2) t = -barW / 2;
         spriteLower.drawFastVLine(barMid + t, y, 11, TFT_YELLOW);
 
-        // Liczba CAŁKOWITA: przy próbkowaniu co 20 ms rozdzielczość pomiaru
-        // wynosi około 3 RPM, więc część dziesiętna nie istnieje — udawała.
+        // A WHOLE number: sampling every 20 ms at 1920 counts per revolution
+        // makes one count worth about 1.6 RPM, so a decimal place would be
+        // inventing precision that is not there.
         spriteLower.setTextColor(TFT_WHITE);
         spriteLower.setCursor(78, y + 2);
         spriteLower.printf("%4d", (int)lroundf(rows[i].measured / 10.0f));
@@ -284,9 +290,9 @@ void DisplayManager::panelLink(unsigned rangePercent, unsigned ackLossPercent,
     spriteLower.fillSprite(TFT_BLACK);
     spriteLower.setTextSize(1);
 
-    // Belka zasięgu. Odwzorowanie jest CELOWO nieliniowe: strata pakietów nie
-    // rośnie liniowo z odległością, tylko wystrzeliwuje przy krawędzi zasięgu.
-    // Belka pokazuje zapas do tej krawędzi, a nie procent strat.
+    // Range bar. The mapping is DELIBERATELY non-linear: packet loss does not
+    // grow linearly with distance, it shoots up at the edge of range. The bar
+    // shows the margin remaining to that edge, not a loss percentage.
     spriteLower.setTextColor(TFT_WHITE);
     spriteLower.setCursor(0, 2);
     spriteLower.print("zasieg");
