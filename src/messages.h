@@ -187,7 +187,7 @@ static_assert(sizeof(Msg_SetPID) == 16, "Msg_SetPID: rozjazd z drugim repo!");
 //  Po stronie platformy `static_assert` sprawdza zgodność z MAX_RPM.
 // =====================================================================
 
-constexpr int   MAX_RPM_TELEMETRY = 1800;    // MAX_RPM = 180, w jednostkach 0,1 RPM
+constexpr int   MAX_RPM_TELEMETRY = 900;     // MAX_RPM = 90, w jednostkach 0,1 RPM
 constexpr float WHEEL_DIAMETER_M  = 0.060f;  // średnica koła mecanum
 
 // Przelicznik z jednostek telemetrii (0,1 RPM koła) na m/s:
