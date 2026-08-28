@@ -194,6 +194,21 @@ constexpr float WHEEL_DIAMETER_M  = 0.060f;  // średnica koła mecanum
 //   v = (value / 10) * PI * D / 60
 constexpr float RPM_TO_MPS = 3.14159265f * WHEEL_DIAMETER_M / 600.0f;
 
+// Geometria potrzebna, żeby z obrotów kół zrobić prędkość kątową platformy.
+// Mierzone od środka koła do środka koła (Piotr, 2026-08-28).
+constexpr float WHEELBASE_M = 0.120f;   // przód–tył
+constexpr float TRACK_M     = 0.150f;   // lewo–prawo (12 cm prześwitu + szerokość koła)
+
+// W kinematyce mecanum człon obrotu wchodzi przez sumę połówek rozstawów.
+// Prędkość liniowa, jaką koło musi mieć, żeby platforma kręciła się z prędkością
+// kątową w, wynosi w * (lx + ly).
+constexpr float MECANUM_LXLY = (WHEELBASE_M + TRACK_M) * 0.5f;
+
+// Człon obrotu z mecanumInverse() jest w jednostkach telemetrii (0,1 RPM koła).
+// Zamiana na stopnie na sekundę: prędkość liniowa koła podzielona przez (lx+ly)
+// daje radiany na sekundę, stąd mnożnik na stopnie.
+constexpr float RPM01_TO_DEG_S = RPM_TO_MPS / MECANUM_LXLY * 57.2957795f;
+
 // Odwrócenie mieszania mecanum: z czterech kół z powrotem na ruch platformy.
 // Wzory muszą pozostać odwrotnością MecanumDrive::drive:
 //     FL = vy + vx + w      FR = vy − vx − w

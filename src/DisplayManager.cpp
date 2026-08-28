@@ -221,6 +221,14 @@ void DisplayManager::panelRadar(float tvx, float tvy, float tw,
         spriteRadar.setTextColor(TFT_WHITE);
         spriteRadar.setCursor(18, 120);
         spriteRadar.printf("%4.2f m/s", rpm * RPM_TO_MPS);
+
+        // Obrót w stopniach na sekundę — teraz uczciwie, bo znamy rozstaw kół.
+        // Sam łuk zostaje: liczba mówi ile, łuk mówi w którą stronę i jak blisko
+        // maksimum, a to widać kątem oka bez czytania.
+        spriteRadar.setTextSize(1);
+        spriteRadar.setTextColor(TFT_CYAN);
+        spriteRadar.setCursor(2, 2);
+        spriteRadar.printf("%+4d st/s", (int)lroundf(mw * RPM01_TO_DEG_S));
     } else {
         spriteRadar.setTextSize(2);
         spriteRadar.setTextColor(TFT_DARKGREY);
