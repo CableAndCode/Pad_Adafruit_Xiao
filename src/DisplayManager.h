@@ -74,7 +74,7 @@ public:
     /// field clipped anything above 255 anyway. A number with three possible
     /// values, two of them off the scale, is not a measurement.
     ///
-    /// It earns its place back when the link has a real range to fail over.
+    /// It earns its place back when the link is long enough to actually fail.
     /// That means a wider window on the platform and a field added back to
     /// messages.h in both repositories — which is what bumping PROTO_VERSION
     /// is for. Until then the echo dot in the stick ring says more about the

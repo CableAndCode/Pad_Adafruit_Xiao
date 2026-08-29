@@ -111,13 +111,33 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
 
     switch (type) {
     case MSG_HELLO: {
+        // Bytes 0 and 1 are frozen across every version of this protocol:
+        // message type, then protocol version. The version is read BEFORE the
+        // length check ON PURPOSE. A bump that changes the SIZE of Msg_Hello
+        // makes the two sides reject each other's HELLO on its length, and the
+        // version would then be unreadable in the one case it matters —
+        // v3 -> v4 was exactly such a bump, 12 bytes down to 8. Without this,
+        // meeting an older platform showed "?TYPE 1  LEN 12" instead of
+        // "PLAT v3  BAD VER".
+        //
+        // platProtoOk is therefore set before the role check as well. That is
+        // safe because the MAC filter above has already let through nobody but
+        // the platform; do not "tidy" this by moving it back below the role
+        // test.
+        if (len >= 2) {
+            platSeen         = true;
+            platProtoVersion = incomingData[1];
+            platProtoOk      = (incomingData[1] == PROTO_VERSION);
+        }
+        // A frame of the wrong length still falls through to protoErrorCount.
+        // "Unreadable frame" and "version mismatch" are separate states and
+        // both have to stay visible. lastPlatHelloMs and handshakeAtMs are
+        // updated only for a FULLY decoded frame — they mean "a partner we can
+        // actually talk to", which a mismatched HELLO is not.
         if (len != (int)sizeof(Msg_Hello)) break;
         Msg_Hello hello;
         memcpy(&hello, incomingData, sizeof(hello));
         if (hello.role != ROLE_PLATFORM) break;
-        platProtoVersion = hello.protoVersion;
-        platSeen         = true;
-        platProtoOk      = (hello.protoVersion == PROTO_VERSION);
         lastPlatHelloMs  = millis();
         if (platProtoOk && handshakeAtMs == 0) handshakeAtMs = millis();
         return;
@@ -305,11 +325,7 @@ static void drawLinkStatusLine(uint32_t rttMs, uint16_t telFlags, int y) {
 
     bool echoFresh = telemEverSeen && ((nowMs - lastTelemetryMs) < TELEM_TIMEOUT_MS);
 
-    if (protoErrorCount > 0) {
-        snprintf(text, sizeof(text), "?TYPE %u  LEN %d",
-                 (unsigned)lastUnknownType, lastUnknownLen);
-        color = TFT_RED;
-    } else if (!platSeen) {
+    if (!platSeen) {
         snprintf(text, sizeof(text), "PLAT --  searching");
         color = TFT_YELLOW;
     } else if (!platProtoOk) {
@@ -329,6 +345,22 @@ static void drawLinkStatusLine(uint32_t rttMs, uint16_t telFlags, int y) {
         // pad could not tell them apart: on an asymmetric link the pad happily
         // showed a healthy RTT while the robot refused to move.
         snprintf(text, sizeof(text), "DRIVE CUT");
+        color = TFT_RED;
+    } else if (protoErrorCount > 0) {
+        // Deliberately BELOW the safety states. This counter never resets, so
+        // at the head of the chain a single unparseable frame pinned the bar to
+        // "?TYPE ..." for the rest of the session and hid PLAT LOST,
+        // PLAT v.. BAD VER and DRIVE CUT behind it.
+        //
+        // Time-limiting it instead would not have been enough: on a version
+        // mismatch the partner's HELLO keeps arriving every second and keeps
+        // failing the length check, so any "recent bad frame" window would be
+        // refreshed forever and would still cover BAD VER — which is the exact
+        // case this bar exists for. Order is the fix; a timer is not.
+        //
+        // The count itself keeps rising and stays on the link panel.
+        snprintf(text, sizeof(text), "?TYPE %u  LEN %d",
+                 (unsigned)lastUnknownType, lastUnknownLen);
         color = TFT_RED;
     } else if ((nowMs - handshakeAtMs) < LINK_BANNER_MS) {
         snprintf(text, sizeof(text), "PLAT v%u  OK", (unsigned)platProtoVersion);

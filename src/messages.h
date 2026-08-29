@@ -23,7 +23,24 @@
 //  COMPILE ERROR — provided both repositories carry this file verbatim.
 //
 //  ---------------------------------------------------------------
-//  EVERY FIELD HERE HAS A LIVE CONSUMER TODAY.
+//  FROZEN: BYTE 0 IS THE MESSAGE TYPE, BYTE 1 OF MSG_HELLO IS THE
+//  PROTOCOL VERSION. No future version may move either of them.
+//
+//  This is what lets a receiver read the SENDER'S version out of a
+//  frame it cannot otherwise decode. It is not theoretical: v3 -> v4
+//  shrank Msg_Hello from 12 bytes to 8, so a v3 and a v4 device reject
+//  each other's HELLO on its LENGTH. Unless the version is read before
+//  that length check, the one diagnostic the whole versioning scheme
+//  exists to produce — "the partner speaks v3, we speak v4" — is the
+//  one thing that cannot be printed, in precisely the situation it was
+//  built for. Both firmwares therefore read byte 1 first; see the
+//  MSG_HELLO case in each main.cpp.
+//  ---------------------------------------------------------------
+//
+//  ---------------------------------------------------------------
+//  EVERY FIELD HERE HAS A LIVE CONSUMER TODAY, with one deliberate
+//  exception noted at `buttons`, plus the `_align` bytes that exist
+//  only to keep the offsets naturally aligned.
 //
 //  Version 4 removed everything that did not: reserved slots for
 //  current, cell voltage, odometry and IMU; both RSSI fields; two loss
@@ -112,7 +129,8 @@ typedef struct __attribute__((packed)) {
     // on the receiving end is deliberately left to whoever wants it.
     //
     // If you bind one to an emergency stop, read the note about
-    // setTargetRPM() clearing the HardStopped state before you do.
+    // setTargetRPM() clearing the HardStopped state before you do — it is in
+    // the platform's main.cpp, in motorControlTask.
     uint16_t buttons;              // BTN_* bits, 1 = pressed
 
     uint32_t seq;                  // sequence number; echoed back, gives RTT

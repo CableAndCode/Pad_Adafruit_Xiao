@@ -310,7 +310,7 @@ void DisplayManager::panelLink(unsigned rangePercent, unsigned ackLossPercent,
     spriteLower.setCursor(0, 18);
     spriteLower.printf("no ACK   %u%% of 100", ackLossPercent);
     // One direction only: "<-" is telemetry this pad missed. The other way
-    // round is not shown — see the header for why the number would be a lie.
+    // round is not shown — see DisplayManager.h for why the number would lie.
     spriteLower.setCursor(0, 32);
     spriteLower.setTextColor(telemLossPermille ? TFT_YELLOW : TFT_WHITE);
     spriteLower.printf("loss <-  %u/1000", telemLossPermille);

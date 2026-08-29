@@ -1,5 +1,8 @@
 # CLAUDE.md — Pad Controller (Xiao ESP32-S3)
 
+> Working notes for this repository, kept in Polish by choice. Everything a
+> user or contributor needs is in README.md and docs/, in English.
+
 Pilot do platformy mecanum: dwa joysticki Adafruit Seesaw (I2C), wyświetlacz
 ST7735 1.8", FreeRTOS, ESP-NOW. Ten plik zawiera wyłącznie rzeczy, których nie
 widać z samego kodu: trwałe niezmienniki i decyzje architektoniczne. Świadomie
@@ -101,6 +104,20 @@ etykiety w kolumnie **9 znaków**, żeby liczby stały równo — nie psuj tego.
 Nie ujednolicaj tego w żadną stronę bez pytania.
 
 Ściągawka do gamepadów: [docs/gamepad-qt.md](docs/gamepad-qt.md).
+
+## Kolejność wgrywania przy zmianie wersji protokołu
+
+**Najpierw platforma, potem Pad, a Padowi na koniec odetnij zasilanie.**
+
+Powód jest konkretny: ramka o niezgodnej długości trafia do `protoErrorCount`,
+a ten licznik **nigdy się nie zeruje**. Jeśli wgrasz Pada jako pierwszego, przez
+chwilę odbiera telemetrię starej wersji, licznik rośnie i zostaje taki do
+restartu — panel łącza pokazuje błędy, których w tej chwili już nie ma.
+
+Od poprawki B3 nie jest to groźne: `?TYPE` stoi w pasku statusu **poniżej**
+stanów bezpieczeństwa, więc nie zasłania już `PLAT LOST`, `BAD VER` ani
+`DRIVE CUT`. Ale licznik na panelu łącza dalej kłamie o teraźniejszości,
+a restart Pada kosztuje sekundę.
 
 ## MAC-y i budowanie
 
