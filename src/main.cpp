@@ -166,7 +166,6 @@ void TaskHello(void *pvParameters) {
         hello.protoVersion = PROTO_VERSION;
         hello.role         = ROLE_PAD;
         hello.fwBuildId    = FW_BUILD_ID;
-        hello.uptimeMs     = millis();
         esp_now_send(macPlatformMecanum, (uint8_t *)&hello, sizeof(hello));
         vTaskDelay(pdMS_TO_TICKS(platProtoOk ? HELLO_INTERVAL_IDLE_MS
                                              : HELLO_INTERVAL_SEARCH_MS));
@@ -213,8 +212,6 @@ void TaskGamepads(void *pvParameters) {
     TickType_t xLastWakeTime = xTaskGetTickCount();
 
     while (1) {
-        unsigned long localTimeStamp = millis();
-
         int localL_Joystick_raw_x = ss1.analogRead(14);
         int localL_Joystick_raw_y = ss1.analogRead(15);
         int localR_Joystick_raw_x = ss2.analogRead(14);
@@ -232,9 +229,7 @@ void TaskGamepads(void *pvParameters) {
         // Raw values no longer go on air — calibration happens here, and the
         // platform never read them anyway.
         xSemaphoreTake(messageMutex, portMAX_DELAY);
-        message.msgType   = MSG_PAD_CONTROL;
-        message.mode      = 0;
-        message.timeStamp = localTimeStamp;
+        message.msgType = MSG_PAD_CONTROL;
 
         message.axisLX = localL_Joystick_x;
         message.axisLY = localL_Joystick_y;
@@ -311,29 +306,29 @@ static void drawLinkStatusLine(uint32_t rttMs, uint16_t telFlags, int y) {
     bool echoFresh = telemEverSeen && ((nowMs - lastTelemetryMs) < TELEM_TIMEOUT_MS);
 
     if (protoErrorCount > 0) {
-        snprintf(text, sizeof(text), "?TYP %u  LEN %d",
+        snprintf(text, sizeof(text), "?TYPE %u  LEN %d",
                  (unsigned)lastUnknownType, lastUnknownLen);
         color = TFT_RED;
     } else if (!platSeen) {
-        snprintf(text, sizeof(text), "PLAT --  szukam");
+        snprintf(text, sizeof(text), "PLAT --  searching");
         color = TFT_YELLOW;
     } else if (!platProtoOk) {
-        snprintf(text, sizeof(text), "PLAT v%u  ZLA WERSJA",
+        snprintf(text, sizeof(text), "PLAT v%u  BAD VER",
                  (unsigned)platProtoVersion);
         color = TFT_RED;
     } else if (telemEverSeen && !echoFresh) {
-        snprintf(text, sizeof(text), "PLAT ZGUBIONA");
+        snprintf(text, sizeof(text), "PLAT LOST");
         color = TFT_RED;
     } else if (!telemEverSeen &&
                (nowMs - lastPlatHelloMs) > PLAT_HELLO_TIMEOUT_MS) {
-        snprintf(text, sizeof(text), "PLAT ZGUBIONA");
+        snprintf(text, sizeof(text), "PLAT LOST");
         color = TFT_RED;
     } else if (echoFresh && (telFlags & TFLAG_FAILSAFE)) {
         // The platform cut its drive because IT cannot hear US. This is not the
         // same state as "we cannot hear the platform" above, and until now the
         // pad could not tell them apart: on an asymmetric link the pad happily
         // showed a healthy RTT while the robot refused to move.
-        snprintf(text, sizeof(text), "NAPED ODCIETY");
+        snprintf(text, sizeof(text), "DRIVE CUT");
         color = TFT_RED;
     } else if ((nowMs - handshakeAtMs) < LINK_BANNER_MS) {
         snprintf(text, sizeof(text), "PLAT v%u  OK", (unsigned)platProtoVersion);
@@ -426,10 +421,10 @@ void TaskTFTScreen(void *pvParameters) {
             } else {
                 static char splashStatus[24] = { 1 };
                 char st[24];
-                if (!platSeen)          snprintf(st, sizeof(st), "szukam platformy...");
-                else if (!platProtoOk)  snprintf(st, sizeof(st), "zla wersja: v%u",
+                if (!platSeen)          snprintf(st, sizeof(st), "searching platform");
+                else if (!platProtoOk)  snprintf(st, sizeof(st), "bad version: v%u",
                                                  (unsigned)platProtoVersion);
-                else                    snprintf(st, sizeof(st), "polaczono");
+                else                    snprintf(st, sizeof(st), "connected");
                 if (strcmp(st, splashStatus) != 0) {
                     display.showSplash(PROTO_VERSION, FW_BUILD_ID, st);
                     strncpy(splashStatus, st, sizeof(splashStatus));
@@ -487,7 +482,6 @@ void TaskTFTScreen(void *pvParameters) {
             unsigned ackLoss = (unsigned)ackFailCount * 100u / ACK_WINDOW;
             display.panelLink(rangeFromLoss(ackLoss), ackLoss,
                               telemLossPermille,
-                              echoValid ? tel.padLossPermille : 0,
                               protoErrorCount,
                               echoValid && (tel.flags & TFLAG_PROTO_ERROR));
             break;

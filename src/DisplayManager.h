@@ -64,12 +64,23 @@ public:
     /// RTT is deliberately absent here — it lives in the status bar, where it
     /// is visible on every screen.
     ///
-    /// Loss is shown for BOTH directions, because they fail independently:
-    /// telemLossPermille is what this pad missed coming down, padLossPermille
-    /// is what the platform reports missing on the way up. An asymmetric link
-    /// is the interesting case and a single number hides it.
+    /// Loss is shown for ONE direction only: telemLossPermille, what this pad
+    /// missed coming down. It is computed here, from gaps in the telemetry
+    /// seq — nothing on the wire carries it.
+    ///
+    /// The upward direction is gone as of protocol v4. The platform used to
+    /// send it, over a window of two frames (telemetry answers every second
+    /// pad frame), so it could only ever read 0, 500 or 1000 — and the uint8_t
+    /// field clipped anything above 255 anyway. A number with three possible
+    /// values, two of them off the scale, is not a measurement.
+    ///
+    /// It earns its place back when the link has a real range to fail over.
+    /// That means a wider window on the platform and a field added back to
+    /// messages.h in both repositories — which is what bumping PROTO_VERSION
+    /// is for. Until then the echo dot in the stick ring says more about the
+    /// link than this ever did.
     void panelLink(unsigned rangePercent, unsigned ackLossPercent,
-                   unsigned telemLossPermille, unsigned padLossPermille,
+                   unsigned telemLossPermille,
                    uint32_t protoErrors, bool platProtoError);
 
     /// Full-screen radar: travel vectors and rotation arcs.

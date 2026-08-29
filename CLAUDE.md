@@ -83,10 +83,22 @@ mecanum ma to sens szczególny, bo jazda bokiem jest pełnoprawnym kierunkiem.
 ## Język: kod po angielsku, ten plik po polsku
 
 Komentarze w `src/`, README i `docs/` są **po angielsku** — repo jest publiczne.
-Ten plik zostaje po polsku, bo jest roboczy. **Napisy na wyświetlaczu też
-zostają po polsku** i to jest decyzja, nie przeoczenie: to interfejs operatora,
-dopasowany do 128 pikseli szerokości. Nie ujednolicaj tego w żadną stronę bez
-pytania.
+Ten plik zostaje po polsku, bo jest roboczy.
+
+**Napisy na wyświetlaczu też są po angielsku** — decyzja Piotra z 2026-08-29,
+odwracająca poprzednią. Wcześniej stało tu, że zostają po polsku jako interfejs
+operatora; skoro repo jest wizytówką, ekran na zdjęciu czyta ktoś z zewnątrz
+tak samo jak kod. Skróty wolno stosować, byle po angielsku.
+
+Ograniczenie, o którym trzeba pamiętać przy każdym nowym napisie: ekran ma
+**128 pikseli**, a czcionka rozmiaru 1 zajmuje 6 pikseli na znak — czyli
+**maksimum 21 znaków w wierszu**, mniej, jeśli kursor startuje z odsunięciem.
+Rozmiar 2 to 12 pikseli na znak, więc 10 znaków. Angielski bywa dłuższy od
+polskiego i to jest jedyny realny powód, dla którego napis może nie wejść;
+wtedy skracaj, nie zmniejszaj czcionki. Trzy wiersze w `panelLink` trzymają
+etykiety w kolumnie **9 znaków**, żeby liczby stały równo — nie psuj tego.
+
+Nie ujednolicaj tego w żadną stronę bez pytania.
 
 Ściągawka do gamepadów: [docs/gamepad-qt.md](docs/gamepad-qt.md).
 

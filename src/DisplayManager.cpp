@@ -68,7 +68,7 @@ void DisplayManager::showSplash(uint8_t protoVersion, uint32_t buildId,
     tft.setTextSize(1);
     tft.setTextColor(TFT_WHITE);
     tft.setCursor(6, 82);
-    tft.printf("protokol v%u", (unsigned)protoVersion);
+    tft.printf("protocol v%u", (unsigned)protoVersion);
     tft.setCursor(6, 94);
     tft.printf("build %08X", (unsigned)buildId);
 
@@ -78,7 +78,7 @@ void DisplayManager::showSplash(uint8_t protoVersion, uint32_t buildId,
 
     tft.setTextColor(TFT_DARKGREY);
     tft.setCursor(6, 144);
-    tft.print("SELECT = ekrany");
+    tft.print("SELECT = screens");
 }
 
 bool DisplayManager::panelChanged(uint8_t id, const void* data, size_t len) {
@@ -233,7 +233,7 @@ void DisplayManager::panelRadar(float tvx, float tvy, float tw,
         spriteRadar.setTextSize(1);
         spriteRadar.setTextColor(TFT_CYAN);
         spriteRadar.setCursor(2, 2);
-        spriteRadar.printf("%+4d st/s", (int)lroundf(mw * RPM01_TO_DEG_S));
+        spriteRadar.printf("%+4d deg/s", (int)lroundf(mw * RPM01_TO_DEG_S));
     } else {
         spriteRadar.setTextSize(2);
         spriteRadar.setTextColor(TFT_DARKGREY);
@@ -283,10 +283,10 @@ void DisplayManager::panelWheels(const WheelRow rows[4]) {
 }
 
 void DisplayManager::panelLink(unsigned rangePercent, unsigned ackLossPercent,
-                               unsigned telemLossPermille, unsigned padLossPermille,
+                               unsigned telemLossPermille,
                                uint32_t protoErrors, bool platProtoError) {
-    uint32_t sig[6] = { rangePercent, ackLossPercent, telemLossPermille,
-                        padLossPermille, protoErrors, (uint32_t)platProtoError };
+    uint32_t sig[5] = { rangePercent, ackLossPercent, telemLossPermille,
+                        protoErrors, (uint32_t)platProtoError };
     if (!panelChanged(4, sig, sizeof(sig))) return;
 
     spriteLower.fillSprite(TFT_BLACK);
@@ -297,7 +297,7 @@ void DisplayManager::panelLink(unsigned rangePercent, unsigned ackLossPercent,
     // shows the margin remaining to that edge, not a loss percentage.
     spriteLower.setTextColor(TFT_WHITE);
     spriteLower.setCursor(0, 2);
-    spriteLower.print("zasieg");
+    spriteLower.print("range");
 
     const int barX = 46, barY = 2, barW = 78, barH = 9;
     spriteLower.drawRect(barX, barY, barW, barH, TFT_DARKGREY);
@@ -308,23 +308,19 @@ void DisplayManager::panelLink(unsigned rangePercent, unsigned ackLossPercent,
 
     spriteLower.setTextColor(TFT_WHITE);
     spriteLower.setCursor(0, 18);
-    spriteLower.printf("bez ACK  %u%% ze 100", ackLossPercent);
-    // Two directions, two rows. The arrow points the way the frames travelled:
-    // "<-" is telemetry this pad missed, "->" is what the platform says it
-    // missed from us. Losing only one direction is common and diagnostic.
+    spriteLower.printf("no ACK   %u%% of 100", ackLossPercent);
+    // One direction only: "<-" is telemetry this pad missed. The other way
+    // round is not shown — see the header for why the number would be a lie.
     spriteLower.setCursor(0, 32);
     spriteLower.setTextColor(telemLossPermille ? TFT_YELLOW : TFT_WHITE);
-    spriteLower.printf("strata <- %u/1000", telemLossPermille);
-    spriteLower.setCursor(0, 46);
-    spriteLower.setTextColor(padLossPermille ? TFT_YELLOW : TFT_WHITE);
-    spriteLower.printf("strata -> %u/1000", padLossPermille);
+    spriteLower.printf("loss <-  %u/1000", telemLossPermille);
 
     // Own error count, plus a marker when the PLATFORM reports having received
     // something it could not parse. That flag latches on the platform, so it
     // belongs here rather than in the status bar, where it would sit forever.
-    spriteLower.setCursor(0, 60);
+    spriteLower.setCursor(0, 46);
     spriteLower.setTextColor((protoErrors || platProtoError) ? TFT_RED : TFT_WHITE);
-    spriteLower.printf("bledy    %lu%s", (unsigned long)protoErrors,
+    spriteLower.printf("errors   %lu%s", (unsigned long)protoErrors,
                        platProtoError ? " +PLAT" : "");
 
     spriteLower.pushSprite(0, LOWER_Y);
