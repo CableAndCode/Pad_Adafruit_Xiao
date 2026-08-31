@@ -88,6 +88,11 @@ mecanum ma to sens szczególny, bo jazda bokiem jest pełnoprawnym kierunkiem.
 Komentarze w `src/`, README i `docs/` są **po angielsku** — repo jest publiczne.
 Ten plik zostaje po polsku, bo jest roboczy.
 
+**Opisy commitów: od 2026-08-31 po angielsku**, tak samo jak w repo platformy.
+Decyzja Piotra: polski opis pod angielskim README wygląda niespójnie, a listę
+commitów widać na GitHubie tak samo jak kod. **Historii nie przepisujemy** —
+starsze opisy zostają po polsku i nie są długiem do spłacenia.
+
 **Napisy na wyświetlaczu też są po angielsku** — decyzja Piotra z 2026-08-29,
 odwracająca poprzednią. Wcześniej stało tu, że zostają po polsku jako interfejs
 operatora; skoro repo jest wizytówką, ekran na zdjęciu czyta ktoś z zewnątrz
