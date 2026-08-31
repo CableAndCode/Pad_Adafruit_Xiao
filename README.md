@@ -1,12 +1,11 @@
 # Pad Controller — Xiao ESP32-S3 + ESP-NOW + FreeRTOS
 
-![Pad Controller Breadboard – Xiao ESP32-S3 + Seesaw](./images/esp-32_Adafruit_TFT.jpeg)
-![Pad Controller Breadboard – Xiao ESP32-S3 + Seesaw Fritzing Diagram](./images/esp-32_Adafruit_TFT_Fritzing_Diagram.png)
-
-*Prototype of the ESP-NOW gamepad: two Adafruit Seesaw joysticks, a Xiao
-ESP32-S3 and a 1.8" ST7735 TFT display.*
-
-<!-- Photos: drop more images into images/ and link them here. -->
+<p align="center">
+  <img src="./images/platform_and_pad.jpeg" alt="The pad and the mecanum platform it drives, with the link running" width="520"/>
+  <br/>
+  <em>One protocol, two devices. The screen is live: round trip 5 ms, no
+  telemetry lost, and the echo dot resting in the middle of the stick ring.</em>
+</p>
 
 This handheld controller is built on a Xiao ESP32-S3 and talks over ESP-NOW. It
 reads two analogue joysticks through Adafruit Seesaw modules (I2C) and draws
@@ -45,6 +44,12 @@ matching protocol version alone does not guarantee.
 ---
 
 ## Components
+
+![Pad Controller Breadboard – Xiao ESP32-S3 + Seesaw](./images/esp-32_Adafruit_TFT.jpeg)
+![Pad Controller Breadboard – Xiao ESP32-S3 + Seesaw Fritzing Diagram](./images/esp-32_Adafruit_TFT_Fritzing_Diagram.png)
+
+*The prototype and its wiring: two Adafruit Seesaw joysticks, a Xiao ESP32-S3
+and a 1.8" ST7735 TFT display.*
 
 | Part | Model / type | Notes |
 |---|---|---|
